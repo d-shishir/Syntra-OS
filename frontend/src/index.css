@@ -1,12 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@theme {
+  --color-darkBg: #0d0e12;
+  --color-darkPanel: #161821;
+  --color-darkBorder: #2a2d3d;
+  --color-darkMuted: #8b949e;
+  --color-neonTeal: #0df;
+  --color-neonIndigo: #6366f1;
+  
+  --font-sans: "Outfit", "Inter", "system-ui", "sans-serif";
+}
 
 @layer base {
   body {
-    @apply bg-darkBg text-gray-100 antialiased selection:bg-neonTeal selection:text-darkBg font-sans;
+    background-color: var(--color-darkBg);
+    color: #e6edf3;
+    -webkit-font-smoothing: antialiased;
+    font-family: var(--font-sans);
     background-image: 
       radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
       radial-gradient(at 100% 100%, rgba(0, 221, 255, 0.03) 0px, transparent 50%);
@@ -30,4 +40,23 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #6366f1;
+}
+
+/* Custom fade animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slideLeft {
+  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
