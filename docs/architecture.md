@@ -47,6 +47,7 @@ The client interface is structured around single-responsibility React components
 
 ### 2.3 Database Layer (Storage)
 - **Engine**: PostgreSQL.
+- **Container**: Runs on local Docker container (`local-postgres` mapping port `5433 -> 5432`).
 - **Index Optimization**: Created `idx_documents_created_at` index on the `created_at` field to prevent list queries from slowing down as the table grows.
 - **Identities**: UUIDv4 keys are generated at the SQL database layer to avoid conflicts during future data syncs or vector shard divisions.
 
@@ -75,7 +76,7 @@ flowchart TD
 ```
 
 ### Key Expansion Steps
-1. **Vector DB Integration**: Enable `pgvector` extension in the existing PostgreSQL container or spin up an external Pinecone service.
+1. **Vector DB Integration**: Enable `pgvector` extension in the local database or spin up an external Pinecone service.
 2. **Text Chunking**: Slice the raw document `content` into overlapping chunks (e.g. 512 tokens with 10% overlap).
 3. **Embeddings Pipeline**: Send text chunks to an embeddings service (OpenAI API or a local SentenceTransformers instance) to retrieve high-dimensional vectors (e.g., 1536 dimensions for `text-embedding-3-small`).
 4. **Semantic Indexing**: Insert these vectors into a new `document_chunks` table referencing the source document ID. Add an HNSW index to accelerate similarity queries.

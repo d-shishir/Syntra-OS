@@ -5,7 +5,7 @@
 ### 1. Repository Initialization & Database Configuration
 - Scaffolding monorepo structures: `/frontend`, `/backend`, `/database`, `/docs`, and `/ai`.
 - Created database migration schemas in `database/schema.sql`.
-- Evaluated and integrated the local Docker PostgreSQL database `baghchal-postgres` running on port `5433`.
+- Evaluated and integrated the local Docker PostgreSQL database `local-postgres` running on port `5433`.
 - Applied the database schema and confirmed table creation.
 
 ### 2. FastAPI Backend Development
