@@ -8,6 +8,7 @@ from .database import get_db
 from .models import Document
 from .schemas import DocumentResponse, DocumentDetailResponse
 from .pdf_processor import extract_text_from_pdf
+from .services.extractor import extract_structured_data
 
 # Configure logging
 logging.basicConfig(
@@ -128,4 +129,39 @@ def get_document_by_id(document_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database query failed: {str(e)}"
+        )
+
+@app.post("/documents/{document_id}/extract", response_model=DocumentDetailResponse)
+def extract_document_data(document_id: str, db: Session = Depends(get_db)):
+    """
+    Extract structured JSON from raw document content and save it in the database.
+    """
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found."
+            )
+            
+        logger.info(f"Triggering structured extraction for document: {document.filename} ({document.id})")
+        
+        # Invoke LLM-powered extraction service
+        extracted_data = extract_structured_data(document.content)
+        
+        # Save JSON to Database
+        document.extracted_json = extracted_data
+        db.commit()
+        db.refresh(document)
+        
+        logger.info(f"Successfully saved extracted structured data to DB for document: {document.id}")
+        return document
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Structured data extraction failed for: {document_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Extraction failed: {str(e)}"
         )

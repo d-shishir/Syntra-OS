@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AI Document Ingestion API"
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5433/doc_ingest"
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
     
     # CORS settings
     CORS_ORIGINS: list[str] = [

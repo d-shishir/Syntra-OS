@@ -12,6 +12,7 @@ class DocumentCreate(DocumentBase):
 
 class DocumentResponse(DocumentBase):
     id: UUID
+    extracted_json: dict | None = None
     created_at: datetime
 
     class Config:

@@ -6,8 +6,8 @@ This document maps out the 30-day milestone tracker for the IngestEngine RAG Kno
 
 ## 📈 Executive Summary
 
-- **Current Stage**: Phase 1 Complete (Document Ingestion Core)
-- **Overall Progress**: 15% (3/20 features deployed)
+- **Current Stage**: Phase 1 In Progress (Document Ingestion & AI Extraction)
+- **Overall Progress**: 20% (4/20 features deployed)
 - **Blocked Items**: None
 
 ---
@@ -16,10 +16,10 @@ This document maps out the 30-day milestone tracker for the IngestEngine RAG Kno
 
 ### Phase 1: Core Ingestion & Processing (Days 1–5)
 - [x] **Day 1**: Monorepo scaffolding, database schemas, PDF text extraction API, React UI.
-- [ ] **Day 2**: PDF table detection and layout structure extraction optimizations.
-- [ ] **Day 3**: Multi-format support extension (DOCX, TXT, MD, HTML).
-- [ ] **Day 4**: User auth gateway, tenant separation schemas.
-- [ ] **Day 5**: API Rate limiting, file storage offloading to S3.
+- [x] **Day 2**: AI reasoning + structured extraction layer.
+- [ ] **Day 3**: PDF table detection and layout structure extraction optimizations.
+- [ ] **Day 4**: Multi-format support extension (DOCX, TXT, MD, HTML).
+- [ ] **Day 5**: User auth gateway, tenant separation schemas.
 
 ### Phase 2: Embedding & Vector Storage (Days 6–15)
 - [ ] **Day 6**: Semantic Chunking Engine (Recursive Character Splitting).
