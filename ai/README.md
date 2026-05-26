@@ -1,74 +1,49 @@
-# AI & RAG Blueprint: Scaling to Semantic Search
+# Syntra OS: AI & RAG Orchestration Engine
 
-This directory holds the blueprints, utility designs, and guidelines for upgrading our Document Ingestion System into a full RAG (Retrieval-Augmented Generation) pipeline.
+This directory holds blueprints, strategies, and implementation details for the Retrieval-Augmented Generation (RAG) knowledge pipeline powering **Syntra OS**.
 
 ---
 
-## High-Level RAG Architecture
+## 🧠 Core RAG Architecture
 
-```mermaid
-graph TD
-    A[PDF Uploaded] --> B[Text Extracted]
-    B --> C[Stored in PostgreSQL]
-    B --> D[Semantic Chunking]
-    D --> E[Embedding Generation]
-    E --> F[Stored in pgvector]
-    G[User Query] --> H[Query Embedding]
-    H --> I[Similarity Search in pgvector]
-    I --> J[Context + Query to LLM]
-    J --> K[RAG Answer Generated]
+```text
+[PDF Document Ingest] ──► [pdfplumber Parser] ──► [Recursive Sentence Chunker]
+                                                          │
+                                                          ▼
+[Cosine Sim Search] ◄── [pgvector Index HNSW] ◄── [Embeddings API (1536-dim)]
+         │
+         ▼
+[Context-Rich Payload] ──► [LLM Generation Engine] ──► [Grounded Citation Answer]
 ```
 
 ---
 
 ## 1. Document Chunking Strategy
-To avoid losing semantic context and keep token usage efficient, we will chunk documents before embedding them:
-- **Chunk Size**: 500-1000 characters.
-- **Overlap**: 10% to 20% (e.g., 100-200 characters) to ensure sentence contexts aren't cut in half.
-- **Method**: Use `RecursiveCharacterTextSplitter` from langchain/llama_index or a custom regex-based splitter that splits on paragraphs `\n\n`, sentences `. `, and spaces ` `.
+Located in [chunker.py](../backend/app/services/chunker.py):
+*   **Segment Size**: 500-600 characters (~150 words).
+*   **Window Overlap**: 100-150 characters (~30 words) to prevent cutting sentences in half.
+*   **Sentence Preservation**: Splitting logic respects punctuation marks (`.`, `?`, `!`) and newlines `\n` to maintain semantic coherence.
 
-**Example implementation skeleton (`ai/chunker.py`):**
-```python
-def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:
-    # Placeholder for recursive character splitting
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunks.append(text[start:end])
-        start += chunk_size - overlap
-    return chunks
-```
+---
 
 ## 2. Generating Embeddings
-Convert clean text chunks into high-dimensional vectors:
-- **Provider**: OpenAI (`text-embedding-3-small` / 1536 dimensions) or local SentenceTransformers (`all-MiniLM-L6-v2` / 384 dimensions).
-- **Batching**: Generate embeddings in batches of 10-100 chunks to optimize API latency and rate limits.
+Located in [embeddings.py](../backend/app/services/embeddings.py):
+*   **Dimensions**: 1536.
+*   **Default Engine**: `text-embedding-3-small` (or equivalent on OpenRouter).
+*   **Offline Fallback**: Returns zero vectors or dummy dimensions to ensure offline tests do not crash if API key is not configured.
 
-## 3. Vector Database Integration
-Store and index embeddings:
-- **Option A (In-database)**: Use PostgreSQL `pgvector`. It keeps all metadata and embeddings in a single transactional database.
-- **Option B (Dedicated Vector DB)**: Sync with Pinecone or Qdrant for very large-scale deployments.
+---
 
-**Similarity Search Query Example (`pgvector`):**
-```sql
-SELECT document_chunks.content, 
-       document_chunks.document_id,
-       1 - (document_chunks.embedding <=> :query_embedding) AS similarity
-FROM document_chunks
-WHERE 1 - (document_chunks.embedding <=> :query_embedding) > :similarity_threshold
-ORDER BY document_chunks.embedding <=> :query_embedding
-LIMIT :top_k;
-```
+## 3. Similarity Search & Vector DB
+Located in [vector_store.py](../backend/app/services/vector_store.py):
+*   **Storage Provider**: PostgreSQL `pgvector` extension.
+*   **Cosine Similarity**: Queries match using the `<=>` operator (1 - Cosine Distance).
+*   **Query Performance**: Accelerated using Hierarchical Navigable Small World (HNSW) indexes (`idx_document_chunks_embedding`).
 
-## 4. Prompt Engineering & LLM Orchestration
-Feed retrieved context to an LLM (e.g., GPT-4o, Claude 3.5 Sonnet) using a prompt template:
-```text
-Context information is below.
----------------------
-{retrieved_context}
----------------------
-Given the context information and not prior knowledge, answer the query.
-Query: {user_query}
-Answer:
-```
+---
+
+## 4. Contextual prompt & Grounding
+Located in [rag_pipeline.py](../backend/app/services/rag_pipeline.py):
+*   **System Prompts**: Instructs the LLM to strictly answer questions using *only* the retrieved context chunks. If details are not present, it must reply "Not found in documents".
+*   **Citations**: Displays chunk snippets and matching similarity scores directly on the frontend dashboard.
+*   **Search Optimizations**: Implements query rewriting and reranking to improve accuracy.

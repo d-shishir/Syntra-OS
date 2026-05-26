@@ -1,6 +1,6 @@
-# Engineering Documentation: IngestEngine Portal
+# Engineering Documentation: Syntra OS Portal
 
-Welcome to the engineering portal for IngestEngine. This documentation outlines the system requirements, architectural plans, daily progression, and functional designs for our AI Document Intelligence system.
+Welcome to the engineering portal for Syntra OS. This documentation outlines the system requirements, architectural layers, milestones progress, and system specifications for our AI-powered Operations Platform.
 
 ---
 
@@ -28,10 +28,16 @@ Welcome to the engineering portal for IngestEngine. This documentation outlines 
 ## 📂 Documentation Navigational Index
 
 - **System Architecture**: [docs/architecture.md](./architecture.md)
-  - Detail on data flows, layer descriptions, and future vector database migrations.
+  - Detail on data flows, layer descriptions, and vector database migrations.
 - **System Specifications**:
   - [Document Processor Module](./systems/document-processor.md)
-  - [Future RAG System Spec](./systems/future-rag-system.md)
+  - [RAG QA Chat System Spec](./systems/rag-system.md)
+  - [Vector Storage & Semantic Search](./systems/vector-storage.md)
+  - [AI Invoice & Payroll Automation Spec](./systems/invoice-payroll-automation.md)
 - **Progress Tracking**:
   - [30-Day Progress Log](./progress.md)
   - [Day 01 Progress Log](./days/day-01.md)
+  - [Day 02 Progress Log](./days/day-02.md)
+  - [Day 03 Progress Log](./days/day-03.md)
+  - [Day 04 Progress Log](./days/day-04.md)
+  - [Day 05 Progress Log](./days/day-05.md)

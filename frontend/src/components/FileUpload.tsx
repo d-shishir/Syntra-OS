@@ -65,7 +65,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess, backend
 
     const formData = new FormData();
     formData.append("file", file);
-
     try {
       const response = await fetch(`${backendUrl}/upload-document`, {
         method: "POST",
@@ -73,15 +72,26 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess, backend
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Upload failed. Please check the PDF.");
+        let errorMsg = "Upload failed. Please check the PDF.";
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.detail || errorMsg;
+        } catch {
+          errorMsg = `Server error ${response.status}: ${response.statusText || "Internal error occurred"}`;
+        }
+        throw new Error(errorMsg);
       }
 
       setStatusMsg({ type: "success", text: `Successfully ingested "${file.name}"!` });
       setFile(null);
       onUploadSuccess();
     } catch (err: any) {
-      setStatusMsg({ type: "error", text: err.message || "An unexpected error occurred." });
+      setStatusMsg({ 
+        type: "error", 
+        text: err.message === "Failed to fetch" 
+          ? "Cannot connect to Syntra OS backend. Please verify that the API server is active on port 8000." 
+          : err.message || "An unexpected error occurred during document upload." 
+      });
     } finally {
       setLoading(false);
     }
@@ -95,14 +105,30 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess, backend
         onDragLeave={handleDrag}
         onDrop={handleDrop}
         onClick={file ? undefined : triggerFileInput}
-        className={`relative border-2 border-dashed rounded-xl p-8 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center min-h-[220px] ${
+        className={`relative border border-darkBorder/60 bg-darkPanel/25 p-8 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center min-h-[220px] overflow-hidden ${
           isDragActive 
-            ? "border-neonTeal bg-darkPanel/80 shadow-[0_0_15px_rgba(0,221,255,0.15)]" 
+            ? "border-neonTeal/80 bg-darkPanel/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]" 
             : file 
-              ? "border-neonIndigo bg-darkPanel/40 cursor-default" 
-              : "border-darkBorder bg-darkPanel/20 hover:border-neonTeal/50 hover:bg-darkPanel/30"
+              ? "border-neonIndigo/50 bg-darkPanel/30 cursor-default" 
+              : "hover:border-neonTeal/40 hover:bg-darkPanel/35"
         }`}
       >
+        {/* Corner Telemetry crosshairs */}
+        <span className="absolute top-1.5 left-2 font-mono text-[9px] text-neonTeal/30 select-none">[SYS_DRAG]</span>
+        <span className="absolute top-2 right-2.5 font-mono text-[9px] text-neonTeal/40 select-none">+</span>
+        <span className="absolute bottom-2 left-2.5 font-mono text-[9px] text-neonTeal/40 select-none">+</span>
+        <span className="absolute bottom-2 right-2.5 font-mono text-[9px] text-neonTeal/40 select-none">+</span>
+
+        {/* Radar Ring Sweeper Animations (visible during drag or upload loading) */}
+        {(isDragActive || loading) && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-48 h-48 rounded-full border border-neonTeal/10 relative">
+              <div className="radar-line" />
+              <div className="absolute inset-4 rounded-full border border-neonTeal/5 border-dashed" />
+            </div>
+          </div>
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
@@ -113,50 +139,52 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess, backend
         />
 
         {file ? (
-          <div className="text-center space-y-4 w-full max-w-sm">
-            <div className="mx-auto w-12 h-12 rounded-lg bg-neonIndigo/10 flex items-center justify-center text-neonIndigo animate-pulse">
-              <FileText className="w-6 h-6" />
+          <div className="text-center space-y-4 w-full max-w-sm relative z-10">
+            <div className="mx-auto w-12 h-12 rounded bg-neonIndigo/10 flex items-center justify-center text-neonIndigo border border-neonIndigo/20 animate-pulse">
+              <FileText className="w-5 h-5" />
             </div>
             <div className="space-y-1">
-              <p className="font-medium text-gray-200 truncate">{file.name}</p>
-              <p className="text-xs text-darkMuted">
-                {(file.size / (1024 * 1024)).toFixed(2)} MB
+              <p className="font-mono text-xs font-bold text-gray-200 truncate px-2">{file.name}</p>
+              <p className="text-[10px] font-mono text-darkMuted uppercase">
+                {(file.size / (1024 * 1024)).toFixed(2)} MB // TELEMETRY OK
               </p>
             </div>
-            <div className="flex gap-2 justify-center pt-2">
+            <div className="flex gap-2.5 justify-center pt-2">
               <button
                 onClick={() => setFile(null)}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-gray-400 hover:text-white bg-darkBorder/40 hover:bg-darkBorder/80 rounded-lg transition-all"
+                className="px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-gray-400 hover:text-white bg-darkBorder/30 hover:bg-darkBorder border border-darkBorder/60 transition-all cursor-pointer"
               >
-                Cancel
+                Clear
               </button>
               <button
                 onClick={uploadFile}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-darkBg bg-neonTeal hover:bg-neonTeal/80 disabled:bg-neonTeal/40 rounded-lg shadow-lg shadow-neonTeal/10 flex items-center gap-1.5 transition-all"
+                className="px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-darkBg bg-neonTeal hover:bg-neonTeal/85 disabled:bg-neonTeal/40 shadow-lg shadow-neonTeal/5 flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Processing...
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Analyzing...
                   </>
                 ) : (
-                  "Ingest Document"
+                  "Transmit Document"
                 )}
               </button>
             </div>
           </div>
         ) : (
-          <div className="text-center space-y-3 pointer-events-none">
-            <div className="mx-auto w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-darkMuted group-hover:text-neonTeal transition-colors">
-              <Upload className="w-5 h-5" />
+          <div className="text-center space-y-4 pointer-events-none relative z-10 py-2">
+            <div className="mx-auto w-11 h-11 rounded border border-darkBorder/80 bg-darkBg/65 flex items-center justify-center text-darkMuted group-hover:text-neonTeal group-hover:border-neonTeal/30 transition-all duration-300">
+              <Upload className="w-4.5 h-4.5" />
             </div>
             <div>
-              <p className="font-semibold text-gray-200">
-                Drag & drop your PDF here, or <span className="text-neonTeal">browse</span>
+              <p className="font-display font-extrabold uppercase text-xs text-gray-200 tracking-wider">
+                Load Data Payload
               </p>
-              <p className="text-xs text-darkMuted mt-1">Supports PDF files only up to 20MB</p>
+              <p className="text-[9px] font-mono text-darkMuted uppercase tracking-widest mt-1">
+                Drag PDF here or <span className="text-neonTeal font-bold">browse mainframe</span>
+              </p>
             </div>
           </div>
         )}
@@ -164,18 +192,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess, backend
 
       {statusMsg && (
         <div
-          className={`flex items-start gap-3 p-4 rounded-xl border animate-fadeIn ${
+          className={`flex items-start gap-3 p-3.5 rounded-none border animate-fadeIn font-mono text-[11px] ${
             statusMsg.type === "success"
-              ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
-              : "bg-rose-950/20 border-rose-500/30 text-rose-300"
+              ? "bg-emerald-950/10 border-emerald-500/25 text-emerald-400"
+              : "bg-rose-950/10 border-rose-500/25 text-rose-400"
           }`}
         >
           {statusMsg.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
           ) : (
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           )}
-          <span className="text-sm font-medium break-all">{statusMsg.text}</span>
+          <span className="leading-relaxed break-words flex-1">
+            [{statusMsg.type.toUpperCase()}] {statusMsg.text}
+          </span>
         </div>
       )}
     </div>

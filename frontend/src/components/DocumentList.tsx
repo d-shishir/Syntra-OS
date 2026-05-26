@@ -1,5 +1,8 @@
 import React, { useState } from "react";
-import { FileText, Calendar, HardDrive, Eye, LayoutGrid, List } from "lucide-react";
+import { FileText, HardDrive, Eye, LayoutGrid, List } from "lucide-react";
+import { ClassificationBadge } from "./ClassificationBadge";
+import { IndexingStatusBadge } from "./IndexingStatusBadge";
+import { DocumentCard } from "./DocumentCard";
 
 export interface DocumentMetadata {
   id: string;
@@ -7,6 +10,9 @@ export interface DocumentMetadata {
   file_size: number;
   mime_type: string;
   created_at: string;
+  is_vectorized?: boolean;
+  document_type?: string;
+  extracted_json?: Record<string, any> | null;
 }
 
 interface DocumentListProps {
@@ -98,45 +104,13 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4"
         }>
           {documents.map((doc) => (
-            <div
+            <DocumentCard
               key={doc.id}
-              className="p-5 bg-darkPanel/20 border border-darkBorder/80 hover:border-neonTeal/50 hover:bg-darkPanel/30 rounded-xl flex flex-col justify-between gap-4 transition-all duration-300 hover:-translate-y-0.5 shadow-sm hover:shadow-md hover:shadow-neonTeal/5 group relative"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-neonTeal/5 flex items-center justify-center text-neonTeal shrink-0 group-hover:scale-105 transition-transform border border-neonTeal/15">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div className="space-y-1 min-w-0">
-                  <h4 className="font-semibold text-gray-200 truncate pr-4 text-sm" title={doc.filename}>
-                    {doc.filename}
-                  </h4>
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-darkMuted">
-                    <span className="flex items-center gap-1">
-                      <HardDrive className="w-3 h-3" />
-                      {formatBytes(doc.file_size)}
-                    </span>
-                    <span className="w-1 h-1 rounded-full bg-darkBorder" />
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(doc.created_at)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-darkBorder/40 pt-3 mt-1">
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-darkBorder/55 text-darkMuted border border-darkBorder/70">
-                  PDF INGESTED
-                </span>
-                <button
-                  onClick={() => onSelectDocument(doc.id)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-neonIndigo/10 hover:bg-neonIndigo text-neonIndigo hover:text-white border border-neonIndigo/20 hover:border-neonIndigo transition-all cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  Preview
-                </button>
-              </div>
-            </div>
+              doc={doc}
+              onSelectDocument={onSelectDocument}
+              formatBytes={formatBytes}
+              formatDate={formatDate}
+            />
           ))}
         </div>
       ) : (
@@ -148,7 +122,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 <tr className="border-b border-darkBorder bg-darkPanel/40 text-xs font-semibold text-darkMuted uppercase tracking-wider">
                   <th className="py-4 px-6">Name</th>
                   <th className="py-4 px-6 hidden sm:table-cell">Size</th>
-                  <th className="py-4 px-6 hidden md:table-cell">Ingested At</th>
+                  <th className="py-4 px-6 hidden md:table-cell">Classification</th>
+                  <th className="py-4 px-6 hidden md:table-cell">Indexing</th>
                   <th className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
@@ -163,7 +138,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         <div className="w-8 h-8 rounded-lg bg-neonTeal/5 flex items-center justify-center text-neonTeal shrink-0 group-hover:scale-105 transition-transform">
                           <FileText className="w-4 h-4" />
                         </div>
-                        <span className="truncate max-w-[200px] sm:max-w-xs md:max-w-sm block" title={doc.filename}>
+                        <span className="truncate max-w-[200px] sm:max-w-xs block" title={doc.filename}>
                           {doc.filename}
                         </span>
                       </div>
@@ -174,11 +149,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         {formatBytes(doc.file_size)}
                       </div>
                     </td>
-                    <td className="py-4 px-6 text-darkMuted hidden md:table-cell">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {formatDate(doc.created_at)}
-                      </div>
+                    <td className="py-4 px-6 hidden md:table-cell">
+                      <ClassificationBadge documentType={doc.document_type} />
+                    </td>
+                    <td className="py-4 px-6 hidden md:table-cell">
+                      <IndexingStatusBadge
+                        isVectorized={doc.is_vectorized}
+                        indexingMethod={doc.extracted_json?.indexing_method}
+                      />
                     </td>
                     <td className="py-4 px-6 text-right">
                       <button

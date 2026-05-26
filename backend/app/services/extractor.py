@@ -11,11 +11,31 @@ INVOICE_PROMPT = """
 You are a structured data extractor. You must analyze the text from a document and return only valid JSON matching this schema:
 {
   "document_type": "invoice",
-  "vendor": "Name of the issuing company/merchant",
-  "amount": "Total final payment amount (string representation, e.g. '123.45')",
+  "vendor_name": "Name of the issuing company/merchant",
+  "invoice_number": "Invoice reference number",
   "currency": "Three-letter currency code (e.g. USD, EUR, NPR)",
-  "date": "Invoice issue date (YYYY-MM-DD format if possible, otherwise raw string)",
-  "invoice_number": "Invoice reference number"
+  "subtotal": "Subtotal amount before tax (string representation, e.g. '100.00')",
+  "tax_amount": "Tax amount (string representation, e.g. '15.00')",
+  "total_amount": "Total final payment amount including tax (string representation, e.g. '115.00')",
+  "due_date": "Invoice due date (YYYY-MM-DD format)",
+  "payment_terms": "Terms of payment (e.g., Net 30, Due on Receipt)"
+}
+"""
+
+PAYROLL_PROMPT = """
+You are a structured data extractor. You must analyze the text from a document and return only valid JSON matching this schema:
+{
+  "document_type": "payroll",
+  "employee_name": "Name of the employee",
+  "salary": "Basic salary amount (string representation, e.g. '5000.00')",
+  "deductions": [
+    {
+      "name": "Name of deduction (e.g. Tax, Health Insurance)",
+      "amount": "Deduction amount (string representation, e.g. '250.00')"
+    }
+  ],
+  "net_pay": "Net payment amount after all deductions (string representation, e.g. '4750.00')",
+  "payment_date": "Date of payment (YYYY-MM-DD format)"
 }
 """
 
@@ -36,13 +56,13 @@ You are a structured data extractor. You must analyze the text from a document a
 SYSTEM_INSTRUCTION = """
 You are a strict JSON extraction microservice. 
 Analyze the input document text and extract the data structure.
-You must classify the document as either an 'invoice' (or receipt/bill) or a 'general' document, and output JSON matching the corresponding schema.
+You must classify the document as either an 'invoice' (or receipt/bill), 'payroll' record, or a 'general' document, and output JSON matching the corresponding schema.
 
 RULES:
 - Output ONLY valid JSON.
 - Do NOT wrap your response in markdown code blocks (no ```json).
 - Do NOT provide explanations, descriptions, introductory text, or trailing notes.
-- If a value cannot be found in the text, set it to null or an empty string.
+- If a value cannot be found in the text, set it to null or an empty string/list.
 """
 
 def attempt_json_repair(raw_text: str) -> dict:
@@ -81,8 +101,16 @@ def extract_structured_data_live(text: str) -> dict:
     )
     
     # Heuristic classification for prompt tailoring
-    is_invoice = any(term in text.lower() for term in ["invoice", "receipt", "bill", "amount due", "total due", "subtotal", "payment terms"])
-    schema_prompt = INVOICE_PROMPT if is_invoice else GENERAL_PROMPT
+    text_lower = text.lower()
+    is_payroll = any(term in text_lower for term in ["payroll", "salary", "payslip", "pay stub", "net pay", "deductions", "employee name", "earnings statement"])
+    is_invoice = any(term in text_lower for term in ["invoice", "receipt", "bill", "amount due", "total due", "subtotal", "payment terms"])
+    
+    if is_payroll:
+        schema_prompt = PAYROLL_PROMPT
+    elif is_invoice:
+        schema_prompt = INVOICE_PROMPT
+    else:
+        schema_prompt = GENERAL_PROMPT
     
     # Retry loop (up to 2 times)
     for attempt in range(1, 3):
@@ -130,44 +158,126 @@ def extract_structured_data_mock(text: str) -> dict:
     """
     logger.info("Executing structured extraction in MOCK mode.")
     
-    # Heuristically parse for invoice features
     text_lower = text.lower()
-    is_invoice = any(term in text_lower for term in ["invoice", "receipt", "bill", "amount", "total"])
+    is_payroll = any(term in text_lower for term in ["payroll", "salary", "payslip", "pay stub", "net pay", "deductions", "employee name", "earnings statement"])
+    is_invoice = any(term in text_lower for term in ["invoice", "receipt", "bill", "amount", "total", "subtotal"])
     
-    if is_invoice:
+    def extract_first_decimal(line_str: str) -> str:
+        # Matches numbers like 10000.00, 1,500.00, 992211, etc.
+        m = re.search(r"\b\d+(?:,\d{3})*(?:\.\d{2})?\b", line_str)
+        if m:
+            return m.group(0).replace(",", "")
+        return ""
+        
+    if is_payroll:
+        # Extract employee name
+        employee_name = "John Miller"
+        for line in text.split("\n"):
+            if "employee" in line.lower() or "name" in line.lower():
+                if ":" in line:
+                    employee_name = line.split(":")[-1].strip()
+                    break
+        
+        salary = "4500.00"
+        net_pay = "3950.00"
+        
+        for line in text.split("\n"):
+            line_l = line.lower()
+            if "salary" in line_l or "basic" in line_l:
+                val = extract_first_decimal(line)
+                if val: salary = val
+            elif "net" in line_l:
+                val = extract_first_decimal(line)
+                if val: net_pay = val
+                
+        deductions = [
+            {"name": "Tax", "amount": "400.00"},
+            {"name": "Health Insurance", "amount": "150.00"}
+        ]
+        
+        # Parse deductions if they exist in the text
+        parsed_deductions = []
+        for line in text.split("\n"):
+            line_l = line.lower()
+            if "tax" in line_l and "deduct" in line_l or "tax" in line_l and any(term in line_l for term in ["federal", "state", "income"]):
+                val = extract_first_decimal(line)
+                if val: parsed_deductions.append({"name": "Tax", "amount": val})
+            elif "health" in line_l or "insurance" in line_l:
+                val = extract_first_decimal(line)
+                if val: parsed_deductions.append({"name": "Insurance", "amount": val})
+        if parsed_deductions:
+            deductions = parsed_deductions
+            
+        # Date
+        date_match = re.search(r"\b(\d{4}[-/]\d{2}[-/]\d{2})\b", text)
+        payment_date = date_match.group(0) if date_match else "2026-05-26"
+        
+        return {
+            "document_type": "payroll",
+            "employee_name": employee_name,
+            "salary": salary,
+            "deductions": deductions,
+            "net_pay": net_pay,
+            "payment_date": payment_date
+        }
+        
+    elif is_invoice:
         # Extract vendor (simple parser)
         vendor = "Unknown Vendor"
         for line in text.split("\n"):
             if "bill to" in line.lower() or "invoice to" in line.lower():
                 continue
-            if any(v_term in line.lower() for v_term in ["ltd", "corp", "inc", "co.", "solutions", "enterprise"]):
+            if any(v_term in line.lower() for v_term in ["ltd", "corp", "inc", "co.", "solutions", "enterprise", "inc.", "corporation", "limited"]):
                 vendor = line.strip()
                 break
         
         # Extract amounts
-        amount = "0.00"
+        subtotal = "0.00"
+        tax_amount = "0.00"
+        total_amount = "0.00"
         currency = "USD"
-        amount_matches = re.findall(r"(?:USD|NPR|EUR|\$|Rs\.?)\s*([\d,]+\.\d{2})", text)
-        if amount_matches:
-            amount = amount_matches[-1] # Pick the last matching amount (usually total)
-        elif "$" in text:
+        
+        for line in text.split("\n"):
+            line_l = line.lower()
+            if "subtotal" in line_l:
+                val = extract_first_decimal(line)
+                if val: subtotal = val
+            elif "tax" in line_l:
+                val = extract_first_decimal(line)
+                if val: tax_amount = val
+            elif "total" in line_l or "amount" in line_l:
+                # Avoid matching invoice number, date or phone numbers
+                if not any(term in line_l for term in ["number", "no", "date", "phone", "fax"]):
+                    val = extract_first_decimal(line)
+                    if val: total_amount = val
+                    
+        if "$" in text or "usd" in text_lower:
             currency = "USD"
+        elif "eur" in text_lower or "€" in text:
+            currency = "EUR"
         
         # Date parser
         date_match = re.search(r"\b(\d{4}[-/]\d{2}[-/]\d{2})\b|\b(\w{3,9}\s\d{1,2},\s\d{4})\b", text)
-        date_val = date_match.group(0) if date_match else "2026-05-25"
+        due_date = date_match.group(0) if date_match else "2026-06-25"
         
         # Invoice number parser
         inv_match = re.search(r"(?:invoice|inv|bill)\s*(?:no|num|#)?[:.\s]*([a-zA-Z0-9-]+)", text_lower)
         invoice_number = inv_match.group(1).upper() if inv_match else "INV-2026-001"
         
+        payment_terms = "Net 30"
+        if "due on receipt" in text_lower:
+            payment_terms = "Due on Receipt"
+            
         return {
             "document_type": "invoice",
-            "vendor": vendor,
-            "amount": amount,
+            "vendor_name": vendor,
+            "invoice_number": invoice_number,
             "currency": currency,
-            "date": date_val,
-            "invoice_number": invoice_number
+            "subtotal": subtotal,
+            "tax_amount": tax_amount,
+            "total_amount": total_amount,
+            "due_date": due_date,
+            "payment_terms": payment_terms
         }
     else:
         # Generate summary stats for general docs
@@ -194,9 +304,15 @@ def extract_structured_data(text: str) -> dict:
     """
     if settings.OPENAI_API_KEY:
         try:
-            return extract_structured_data_live(text)
+            res = extract_structured_data_live(text)
+            res["extraction_method"] = "live"
+            return res
         except Exception as e:
             logger.error(f"Live OpenAI extraction failed. Falling back to mock generator. Error: {str(e)}")
-            return extract_structured_data_mock(text)
+            res = extract_structured_data_mock(text)
+            res["extraction_method"] = "mock"
+            return res
     else:
-        return extract_structured_data_mock(text)
+        res = extract_structured_data_mock(text)
+        res["extraction_method"] = "mock"
+        return res

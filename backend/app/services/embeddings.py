@@ -27,11 +27,11 @@ def generate_openai_embedding(text: str) -> list[float]:
 
 def generate_mock_embedding(text: str) -> list[float]:
     """
-    Generates a deterministic 1536-dimensional mock vector using pure Python.
+    Generates a deterministic 768-dimensional mock vector using pure Python.
     It splits the text into lowercase words, seeds random number generators,
     and normalizes the vector.
     """
-    dimensions = 1536
+    dimensions = 768
     vector = [0.0] * dimensions
     
     # Clean text and split to tokens
@@ -68,15 +68,24 @@ def generate_mock_embedding(text: str) -> list[float]:
         val = 1.0 / math.sqrt(dimensions)
         return [val] * dimensions
 
+def get_embedding_with_method(text: str) -> tuple[list[float], str]:
+    """
+    Entrypoint: calls OpenAI if key is present, otherwise falls back to mock generator.
+    Returns a tuple of (embedding_vector, method) where method is 'live' or 'mock'.
+    """
+    if settings.OPENAI_API_KEY:
+        try:
+            return generate_openai_embedding(text), "live"
+        except Exception as e:
+            logger.error(f"Failed to generate OpenAI embedding. Falling back to Mock: {str(e)}")
+            return generate_mock_embedding(text), "mock"
+    else:
+        return generate_mock_embedding(text), "mock"
+
 def get_embedding(text: str) -> list[float]:
     """
     Entrypoint: calls OpenAI if key is present, otherwise falls back to mock generator.
     """
-    if settings.OPENAI_API_KEY:
-        try:
-            return generate_openai_embedding(text)
-        except Exception as e:
-            logger.error(f"Failed to generate OpenAI embedding. Falling back to Mock: {str(e)}")
-            return generate_mock_embedding(text)
-    else:
-        return generate_mock_embedding(text)
+    vector, _ = get_embedding_with_method(text)
+    return vector
+

@@ -1,6 +1,6 @@
 # System Specification: Grounded RAG Chat Engine
 
-This document details the layout, query sequences, prompt instructions, and reference mappings implemented in IngestEngine's RAG Chat Assistant Workspace.
+This document details the layout, query sequences, prompt instructions, and reference mappings implemented in Syntra OS's RAG Chat Assistant Workspace.
 
 ---
 
@@ -10,23 +10,23 @@ This document details the layout, query sequences, prompt instructions, and refe
 [User Q&A Query]
        │
        ▼
- 1. [Embed query] ──► (1536-dimensional float vector representation)
+  1. [Embed query] ──► (768-dimensional BAAI vector representation)
        │
        ▼
- 2. [pgvector search] ──► (Retrieve Top-4 closest document chunks via HNSW index)
+  2. [pgvector search] ──► (Retrieve Top-4 closest document chunks via HNSW index)
        │
        ▼
- 3. [Assemble payload] ──► (Compile SYSTEM instructions + CONTEXT block + USER query)
+  3. [Assemble payload] ──► (Compile SYSTEM instructions + CONTEXT block + USER query)
        │
        ├─────────────────────────────────┐
        ▼ (If Key present)                ▼ (If Key missing)
- 4. [OpenAI API Call]             [Mock RAG Solver]
+  4. [OpenAI API Call]             [Mock RAG Solver]
        │                                 │
        ▼                                 │
- 5. [Grounded Answer Output]             │
+  5. [Grounded Answer Output]             │
        │                                 │
        ▼                                 ▼
- 6. [Assemble Response JSON] ◄───────────┘
+  6. [Assemble Response JSON] ◄───────────┘
        │
        ▼
 (Payload returns answer + filename citations + similarity scores)

@@ -1,6 +1,6 @@
-# IngestEngine: AI Document Ingestion System
+# Syntra OS: AI-Powered Operations Platform
 
-A production-ready internal platform for document ingestion, raw text extraction, and analytics, designed to serve as the foundation for a company-wide Retrieval-Augmented Generation (RAG) knowledge base.
+A production-ready enterprise platform for document ingestion, raw text extraction, and analytics, designed to serve as a company-wide Retrieval-Augmented Generation (RAG) knowledge base with integrated financial auditing modules.
 
 ---
 
@@ -10,7 +10,9 @@ A production-ready internal platform for document ingestion, raw text extraction
 ├── backend/          # FastAPI REST API (Python 3.13)
 ├── frontend/         # React + TypeScript + Tailwind CSS v4 SPA
 ├── database/         # PostgreSQL DDL and schema migrations
-├── ai/               # Future RAG, chunking, and embedding workflows
+├── modules/          # Core pluggable business logic modules
+│   └── invoice_automation/ # AI Invoice & Payroll auditing services
+├── ai/               # RAG, chunking, and embedding workflows
 ├── docs/             # Technical System Engineering Documentation
 │   ├── README.md     # Engineering portal overview
 │   ├── architecture.md# Detailed system layers and data flows
@@ -26,18 +28,24 @@ A production-ready internal platform for document ingestion, raw text extraction
 
 - **Frontend**: React 18, TypeScript, Tailwind CSS v4, Vite, Lucide Icons
 - **Backend**: FastAPI, SQLAlchemy (v2), pdfplumber (Text Extraction), Uvicorn
-- **Database**: PostgreSQL (UUID keys, optimization indexes, future-ready vector store)
-- **AI/RAG Readiness**: Modular text block schema ready for embedding vectors and similarity indexing.
+- **Database**: PostgreSQL (pgvector, HNSW optimized similarity search, UUID keys)
+- **AI/RAG Integration**: Multi-chunk embeddings pipeline (768-dim BAAI bge-base-en-v1.5), cosine similarity matching, OpenAI/OpenRouter chat context completion.
+- **Fintech Automation**: Validator calculation auditing engine and statistical anomaly checking.
 
 ---
 
 ## 🚀 Quick Start Guide
 
 ### 1. Database Setup
-Ensure PostgreSQL is running. To initialize the ingestion schema on your database:
+Ensure PostgreSQL is running. To initialize the base schema on your database:
 ```bash
-# Run schema definition script against your local postgres server
+# Run base schema script
 psql -h <host> -p <port> -U <user> -d <dbname> -f database/schema.sql
+
+# Apply migrations sequentially
+psql -h <host> -p <port> -U <user> -d <dbname> -f database/migrations/create_chunks_table.sql
+psql -h <host> -p <port> -U <user> -d <dbname> -f database/migrations/add_extracted_json.sql
+psql -h <host> -p <port> -U <user> -d <dbname> -f database/migrations/create_invoice_payroll_tables.sql
 ```
 
 ### 2. Backend API Setup

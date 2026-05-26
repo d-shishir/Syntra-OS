@@ -1,73 +1,33 @@
-# React + TypeScript + Vite
+# Syntra OS: Frontend Portal UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the single-page application (SPA) client interface for **Syntra OS**, built using React, TypeScript, Vite, and styled with Tailwind CSS v4.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🎨 Design System & Aesthetics
 
-## React Compiler
+The client interface is designed around a premium, glassmorphic dark-mode configuration, leveraging outfit font-faces, vibrant neon colors, and micro-interaction animations.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+*   **Tailwind Theme Config**: Standardized colors like `--color-darkBg` (#0d0e12), `--color-darkPanel` (#161821), `--color-neonTeal` (#0df), and `--color-neonIndigo` (#6366f1) are defined in [index.css](./src/index.css).
+*   **Aesthetic Animation classes**: Includes custom `.animate-fadeIn` and `.animate-slideLeft` keyframes for seamless page transitions.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🏗️ Components Directory
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+*   **`App.tsx`**: Orchestrator containing sidebar indicators, system latency metric counters, and workspace navigation selectors.
+*   **`components/FileUpload.tsx`**: Drag-and-drop file uploader enforcing type limits (strictly PDFs) and file size gates (< 20MB).
+*   **`components/DocumentList.tsx`**: Renders database catalogs with statuses (Indexed, Extracted).
+*   **`components/DocumentViewer.tsx`**: Drawer showing raw text previews and structured JSON payloads.
+*   **`modules/invoice-automation/Dashboard.tsx`**: Fintech operations panel displaying transaction KPI averages, paginated tables, and live Operational Risk alerting grids.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Dev Run Commands
+
+Ensure the FastAPI backend is running first, then start the client:
+```bash
+npm install
+npm run dev
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+The React development server runs by default on [http://localhost:5173](http://localhost:5173).

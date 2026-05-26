@@ -14,6 +14,8 @@ class DocumentResponse(DocumentBase):
     id: UUID
     extracted_json: dict | None = None
     created_at: datetime
+    is_vectorized: bool = False
+    document_type: str = "unclassified"
 
     class Config:
         from_attributes = True

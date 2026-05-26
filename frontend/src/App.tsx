@@ -4,6 +4,7 @@ import { DocumentList } from "./components/DocumentList";
 import type { DocumentMetadata } from "./components/DocumentList";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff } from "lucide-react";
+import { Dashboard } from "./modules/invoice-automation/Dashboard";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -48,7 +49,7 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "catalog" | "search" | "chat";
+type WorkspaceTab = "catalog" | "search" | "chat" | "finance";
 
 interface SystemMetrics {
   documents_indexed: number;
@@ -61,6 +62,9 @@ function App() {
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  
+  // Connection status tracking
+  const [apiConnected, setApiConnected] = useState<boolean>(true);
   
   // Workspace Tab State
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("catalog");
@@ -77,7 +81,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: "assistant",
-      text: "Hi! I am IngestEngine's RAG Assistant. Ask me any question, and I will search and answer using only your vectorized document library."
+      text: "Hi! I am Syntra OS's RAG Assistant. Ask me any question, and I will search and answer using only your vectorized document library."
     }
   ]);
   const [chatting, setChatting] = useState(false);
@@ -102,8 +106,12 @@ function App() {
       }
       const data = await response.json();
       setDocuments(data);
-    } catch (error) {
+      setApiConnected(true);
+    } catch (error: any) {
       console.error("Error fetching documents:", error);
+      if (error.message === "Failed to fetch") {
+        setApiConnected(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -115,6 +123,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         setAiStatus(data);
+        setApiConnected(true);
       } else {
         setAiStatus({
           status: "disconnected",
@@ -124,7 +133,7 @@ function App() {
           detail: "Server returned non-200 status code."
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching AI status:", error);
       setAiStatus({
         status: "disconnected",
@@ -133,6 +142,9 @@ function App() {
         provider: "API Connection Failure",
         detail: "Could not reach the health endpoint."
       });
+      if (error.message === "Failed to fetch") {
+        setApiConnected(false);
+      }
     }
   }, []);
 
@@ -142,9 +154,13 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         setSystemMetrics(data);
+        setApiConnected(true);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching system metrics:", error);
+      if (error.message === "Failed to fetch") {
+        setApiConnected(false);
+      }
     }
   }, []);
 
@@ -236,31 +252,33 @@ function App() {
               <Cpu className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="font-bold text-gray-200 tracking-wide flex items-center gap-1.5">
-                IngestEngine
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-neonIndigo/20 text-neonIndigo border border-neonIndigo/30">
-                  RAG Core
+              <h1 className="font-display font-extrabold text-gray-200 tracking-wider flex items-center gap-1.5 text-base uppercase">
+                Syntra OS
+                <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-neonIndigo/20 text-neonIndigo border border-neonIndigo/30 tracking-normal font-medium">
+                  Enterprise
                 </span>
               </h1>
-              <p className="text-[10px] text-darkMuted">Enterprise AI Document Pipeline</p>
+              <p className="text-[9px] font-mono text-darkMuted uppercase tracking-wider mt-0.5">AI-Powered Operations Platform</p>
             </div>
           </div>
           
           <div className="flex items-center gap-4 text-xs">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-darkBorder/30 hover:bg-neonTeal/20 text-gray-300 hover:text-neonTeal border border-darkBorder/60 transition-all cursor-pointer mr-1"
-              title={sidebarOpen ? "Collapse sidebar control panel" : "Expand sidebar control panel"}
-            >
-              <Sliders className="w-3 h-3" />
-              <span>{sidebarOpen ? "Hide Panel" : "Show Panel"}</span>
-            </button>
+            {apiConnected && (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-darkBorder/30 hover:bg-neonTeal/20 text-gray-300 hover:text-neonTeal border border-darkBorder/60 transition-all cursor-pointer mr-1"
+                title={sidebarOpen ? "Collapse sidebar control panel" : "Expand sidebar control panel"}
+              >
+                <Sliders className="w-3 h-3" />
+                <span>{sidebarOpen ? "Hide Panel" : "Show Panel"}</span>
+              </button>
+            )}
 
-            <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-              API Connected
+            <div className={`flex items-center gap-1.5 font-medium ${apiConnected ? "text-emerald-400" : "text-rose-400"}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${apiConnected ? "bg-emerald-400 animate-ping" : "bg-rose-500 animate-pulse"}`} />
+              {apiConnected ? "API Connected" : "API Offline"}
             </div>
-            {aiStatus && (
+            {apiConnected && aiStatus && (
               <div className={`flex items-center gap-1.5 font-medium px-2 py-0.5 rounded border ${
                 aiStatus.status === "connected"
                   ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
@@ -282,8 +300,49 @@ function App() {
         </div>
       </header>
 
-      {/* Main Grid Content */}
-      <main className="max-w-7xl w-full mx-auto px-6 mt-8 flex-1 grid grid-cols-1 lg:grid-cols-4 gap-8">
+      {!apiConnected ? (
+        <div className="max-w-4xl mx-auto px-6 mt-16 w-full flex-1 flex flex-col items-center justify-center animate-fadeIn text-center space-y-6">
+          <div className="p-8 border border-rose-500/25 bg-darkPanel/20 rounded-none max-w-xl space-y-5 relative shadow-lg shadow-rose-950/5">
+            {/* Corner Indicators */}
+            <span className="absolute -top-2 -left-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
+            <span className="absolute -top-2 -right-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
+            <span className="absolute -bottom-2 -left-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
+            <span className="absolute -bottom-2 -right-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
+            
+            <div className="w-12 h-12 mx-auto rounded border border-rose-500/20 bg-rose-500/10 flex items-center justify-center text-rose-400">
+              <Server className="w-6 h-6 animate-pulse" />
+            </div>
+            
+            <div className="space-y-2">
+              <h2 className="font-display font-extrabold text-sm text-gray-200 tracking-wider uppercase">
+                [ALERT] Central Mainframe Offline
+              </h2>
+              <p className="font-mono text-[9px] text-rose-400 uppercase tracking-widest leading-normal">
+                Critical: Syntra OS API Node Unreachable
+              </p>
+              <div className="border-t border-darkBorder/40 my-3 pt-3" />
+              <p className="text-xs text-darkMuted leading-relaxed">
+                The operations node at <code className="text-gray-300 font-mono bg-darkBg/60 px-1 py-0.5 border border-darkBorder/45 rounded">{BACKEND_URL}</code> is unreachable. Vector storage retrieval, semantic chunking pipelines, and LLM automation services are suspended until contact is restored.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setLoading(true);
+                fetchDocuments();
+                fetchAIStatus();
+                fetchSystemMetrics();
+              }}
+              className="w-full py-2.5 text-xs font-mono font-bold uppercase tracking-wider text-white bg-rose-950 hover:bg-rose-900 border border-rose-700/40 rounded-none transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Reconnect Mainframe
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Main Grid Content */
+        <main className="max-w-7xl w-full mx-auto px-6 mt-8 flex-1 grid grid-cols-1 lg:grid-cols-4 gap-8">
         
         {/* Left Side: Upload & System Stats */}
         {sidebarOpen ? (
@@ -399,40 +458,31 @@ function App() {
         {/* Right Side: Tabbed workspaces */}
         <div className={`${sidebarOpen ? "lg:col-span-3" : "lg:col-span-4"} space-y-6 flex flex-col transition-all duration-300`}>
           {/* Tab Selector Buttons */}
-          <div className="flex border-b border-darkBorder">
-            <button
-              onClick={() => setActiveTab("catalog")}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
-                activeTab === "catalog"
-                  ? "border-neonTeal text-neonTeal"
-                  : "border-transparent text-darkMuted hover:text-gray-300"
-              }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              Library Catalog
-            </button>
-            <button
-              onClick={() => setActiveTab("chat")}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
-                activeTab === "chat"
-                  ? "border-neonIndigo text-neonIndigo"
-                  : "border-transparent text-darkMuted hover:text-gray-300"
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              RAG Chat Assistant
-            </button>
-            <button
-              onClick={() => setActiveTab("search")}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
-                activeTab === "search"
-                  ? "border-yellow-500 text-yellow-500"
-                  : "border-transparent text-darkMuted hover:text-gray-300"
-              }`}
-            >
-              <Search className="w-4 h-4" />
-              Semantic Search
-            </button>
+          <div className="flex flex-wrap gap-2 border-b border-darkBorder/60 pb-3">
+            {[
+              { id: "catalog", label: "Library Catalog", num: "01", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: BookOpen },
+              { id: "chat", label: "RAG Chat Assistant", num: "02", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: MessageSquare },
+              { id: "search", label: "Semantic Search", num: "03", activeColor: "border-yellow-500 text-yellow-500 bg-yellow-500/5", icon: Search },
+              { id: "finance", label: "Finance Operations", num: "04", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Activity }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as WorkspaceTab)}
+                  className={`flex items-center gap-2.5 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-wider border transition-all cursor-pointer rounded-none ${
+                    isActive
+                      ? `${tab.activeColor} border-current`
+                      : "border-darkBorder bg-darkPanel/10 text-darkMuted hover:text-gray-300 hover:border-darkBorder/100"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                  <span className="text-[8px] opacity-40 ml-1">[{tab.num}]</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Active Tab View Panels */}
@@ -802,9 +852,13 @@ function App() {
                 </div>
               </div>
             )}
+            {activeTab === "finance" && (
+              <Dashboard backendUrl={BACKEND_URL} />
+            )}
           </div>
         </div>
       </main>
+      )}
 
       {/* Side preview Drawer */}
       <DocumentViewer

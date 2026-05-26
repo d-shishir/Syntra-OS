@@ -1,25 +1,31 @@
 @import "tailwindcss";
 
 @theme {
-  --color-darkBg: #0d0e12;
-  --color-darkPanel: #161821;
-  --color-darkBorder: #2a2d3d;
-  --color-darkMuted: #8b949e;
-  --color-neonTeal: #0df;
-  --color-neonIndigo: #6366f1;
+  --color-darkBg: #06070a;
+  --color-darkPanel: #0c0e14;
+  --color-darkBorder: #1f2330;
+  --color-darkMuted: #60697a;
+  --color-neonTeal: #f59e0b;     /* Remapped to Cyber Amber */
+  --color-neonIndigo: #10b981;   /* Remapped to Matrix Green */
   
-  --font-sans: "Outfit", "Inter", "system-ui", "sans-serif";
+  --font-sans: "Outfit", "system-ui", "sans-serif";
+  --font-display: "Syne", "sans-serif";
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
 }
 
 @layer base {
   body {
     background-color: var(--color-darkBg);
-    color: #e6edf3;
+    color: #e2e8f0;
     -webkit-font-smoothing: antialiased;
     font-family: var(--font-sans);
     background-image: 
-      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(0, 221, 255, 0.03) 0px, transparent 50%);
+      /* Micro grid pattern */
+      radial-gradient(rgba(245, 158, 11, 0.04) 1px, transparent 1px),
+      /* Glowing corners */
+      radial-gradient(at 0% 0%, rgba(245, 158, 11, 0.04) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
+    background-size: 24px 24px, 100% 100%, 100% 100%;
   }
 }
 
@@ -30,19 +36,19 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d0e12;
+  background: #06070a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2d3d;
-  border-radius: 4px;
+  background: #1f2330;
+  border-radius: 0px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6366f1;
+  background: #f59e0b;
 }
 
-/* Custom fade animations */
+/* Custom animations & keyframes */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -53,6 +59,21 @@
   to { transform: translateX(0); }
 }
 
+@keyframes pulse-glow-amber {
+  0%, 100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.1), inset 0 0 5px rgba(245, 158, 11, 0.05); }
+  50% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.25), inset 0 0 10px rgba(245, 158, 11, 0.1); }
+}
+
+@keyframes pulse-glow-green {
+  0%, 100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.1), inset 0 0 5px rgba(16, 185, 129, 0.05); }
+  50% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), inset 0 0 10px rgba(16, 185, 129, 0.1); }
+}
+
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -60,3 +81,57 @@
 .animate-slideLeft {
   animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Custom cyber-panel layouts */
+.cyber-panel {
+  position: relative;
+  background-color: rgba(12, 14, 20, 0.45);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(31, 35, 48, 0.85);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.cyber-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.15), transparent);
+}
+
+.glow-amber-pulse {
+  animation: pulse-glow-amber 2s infinite ease-in-out;
+}
+
+.glow-green-pulse {
+  animation: pulse-glow-green 2s infinite ease-in-out;
+}
+
+.radar-line {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: conic-gradient(from 0deg, transparent 50%, rgba(245, 158, 11, 0.08) 100%);
+  border-radius: 50%;
+  animation: radar-sweep 4s linear infinite;
+}
+
+/* Custom telemetry text styling */
+.scanlines-overlay {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanlines-overlay::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 2;
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+}
+

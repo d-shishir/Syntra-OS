@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC
 --     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
 --     chunk_index INTEGER NOT NULL,
 --     content TEXT NOT NULL, -- Text segment
---     embedding vector(1536) NOT NULL, -- OpenAI text-embedding-3-small / text-embedding-ada-002 dimensions
+--     embedding vector(768) NOT NULL, -- BAAI bge-base-en-v1.5 format (or 1536 for OpenAI text-embedding-3-small)
 --     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 -- );
 --

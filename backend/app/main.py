@@ -1,19 +1,29 @@
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
+import sys
+import os
+# Ensure workspace root is in sys.path
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import logging
 
 from .config import settings
-from .database import get_db
+from .database import get_db, SessionLocal
 from .models import Document
 from .schemas import DocumentResponse, DocumentDetailResponse, SearchResultResponse, ChatRequest, ChatResponse, SystemMetricsResponse
 from .pdf_processor import extract_text_from_pdf
 from .services.extractor import extract_structured_data
 from .services.chunker import split_text_into_chunks
-from .services.embeddings import get_embedding
+from .services.embeddings import get_embedding, get_embedding_with_method
 from .services.vector_store import save_document_chunks, search_similar_chunks
 from .services.rag_pipeline import ask_question_rag
 from .services.metrics import metrics_tracker
+
+# Import the new invoice/payroll automation router
+from modules.invoice_automation.router import router as invoice_automation_router
 
 # Configure logging
 logging.basicConfig(
@@ -23,6 +33,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.PROJECT_NAME)
+
+# Register the new router
+app.include_router(invoice_automation_router, prefix="/api/v1/invoice-automation", tags=["Invoice & Payroll Automation"])
 
 # Setup CORS
 app.add_middleware(
@@ -97,14 +110,67 @@ def get_system_metrics(db: Session = Depends(get_db)):
             detail=f"Failed to compile metrics: {str(e)}"
         )
 
+def integrate_document_pipeline(document_id: str, db_session_factory):
+    """
+    Asynchronous background worker to chunk, embed, classify, extract, and
+    validate invoices/payroll documents into postgres and pgvector.
+    """
+    db = db_session_factory()
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            logger.error(f"Background pipeline failed: Document {document_id} not found")
+            return
+            
+        logger.info(f"Background task: chunking and indexing document {document.filename} ({document.id})")
+        
+        # 1. Chunk and index into vector store
+        chunks = split_text_into_chunks(document.content)
+        indexing_method = None
+        if chunks:
+            embeddings = []
+            indexing_methods = set()
+            for c in chunks:
+                emb, method = get_embedding_with_method(c["chunk_text"])
+                embeddings.append(emb)
+                indexing_methods.add(method)
+            
+            indexing_method = "live" if "live" in indexing_methods else "mock"
+            save_document_chunks(db, str(document.id), chunks, embeddings)
+            logger.info(f"Background task: indexed {len(chunks)} chunks for document {document_id}")
+            
+        # 2. Extract structured JSON
+        logger.info(f"Background task: extracting structured data for {document_id}")
+        extracted_data = extract_structured_data(document.content)
+        if indexing_method:
+            extracted_data["indexing_method"] = indexing_method
+        document.extracted_json = extracted_data
+        db.commit()
+        
+        # 3. Process according to classification
+        doc_type = extracted_data.get("document_type")
+        if doc_type == "invoice":
+            from modules.invoice_automation.invoice_service import process_invoice
+            process_invoice(db, str(document.id), extracted_data)
+        elif doc_type == "payroll":
+            from modules.invoice_automation.payroll_service import process_payroll
+            process_payroll(db, str(document.id), extracted_data)
+            
+        logger.info(f"Background task: successfully completed integration pipeline for document {document_id}")
+    except Exception as e:
+        logger.exception(f"Background pipeline failed for document {document_id}: {str(e)}")
+    finally:
+        db.close()
+
 @app.post("/upload-document", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
     """
     Accepts a PDF document, extracts text, stores it in PostgreSQL database,
-    and prepares it for future vector embedding extraction.
+    and runs the background integration task to index, extract, and analyze financial data.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -135,14 +201,8 @@ async def upload_document(
         
         logger.info(f"Successfully stored document: {file.filename} (ID: {db_doc.id})")
         
-        # =====================================================================
-        # FUTURE RAG PIPELINE EXPANSION HOOK
-        # =====================================================================
-        # 1. Trigger Async Background Worker (e.g. Celery / FastAPI BackgroundTask)
-        # 2. Chunk text: chunks = chunk_text(db_doc.content)
-        # 3. Generate Embeddings: embeddings = generate_embeddings(chunks)
-        # 4. Save to Vector Store: save_vector_embeddings(db_doc.id, chunks, embeddings)
-        # =====================================================================
+        # Trigger background processing (indexing, extraction, validation, anomalies)
+        background_tasks.add_task(integrate_document_pipeline, str(db_doc.id), SessionLocal)
         
         return db_doc
         
@@ -166,7 +226,30 @@ def get_documents(db: Session = Depends(get_db)):
     """
     try:
         documents = db.query(Document).order_by(Document.created_at.desc()).all()
-        return documents
+        
+        # Get list of vectorized document IDs in a single query
+        from sqlalchemy import text
+        vectorized_ids = {
+            row[0] for row in db.execute(text("SELECT DISTINCT document_id FROM document_chunks")).fetchall()
+        }
+        
+        result = []
+        for doc in documents:
+            doc_type = "unclassified"
+            if doc.extracted_json:
+                doc_type = doc.extracted_json.get("document_type", "generic")
+                
+            result.append(DocumentResponse(
+                filename=doc.filename,
+                file_size=doc.file_size,
+                mime_type=doc.mime_type,
+                id=doc.id,
+                extracted_json=doc.extracted_json,
+                created_at=doc.created_at,
+                is_vectorized=doc.id in vectorized_ids,
+                document_type=doc_type
+            ))
+        return result
     except Exception as e:
         logger.exception("Failed to fetch documents")
         raise HTTPException(
@@ -186,7 +269,28 @@ def get_document_by_id(document_id: str, db: Session = Depends(get_db)):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found."
             )
-        return document
+            
+        from sqlalchemy import text
+        has_chunks = db.execute(
+            text("SELECT 1 FROM document_chunks WHERE document_id = :doc_id LIMIT 1"),
+            {"doc_id": document.id}
+        ).fetchone() is not None
+        
+        doc_type = "unclassified"
+        if document.extracted_json:
+            doc_type = document.extracted_json.get("document_type", "generic")
+            
+        return DocumentDetailResponse(
+            filename=document.filename,
+            file_size=document.file_size,
+            mime_type=document.mime_type,
+            id=document.id,
+            extracted_json=document.extracted_json,
+            created_at=document.created_at,
+            content=document.content,
+            is_vectorized=has_chunks,
+            document_type=doc_type
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -214,13 +318,44 @@ def extract_document_data(document_id: str, db: Session = Depends(get_db)):
         # Invoke LLM-powered extraction service
         extracted_data = extract_structured_data(document.content)
         
+        # Preserve indexing_method if it already exists in the database
+        if document.extracted_json and "indexing_method" in document.extracted_json:
+            extracted_data["indexing_method"] = document.extracted_json["indexing_method"]
+            
         # Save JSON to Database
         document.extracted_json = extracted_data
         db.commit()
         db.refresh(document)
         
+        # Sync invoice or payroll automation layers
+        doc_type = extracted_data.get("document_type")
+        if doc_type == "invoice":
+            from modules.invoice_automation.invoice_service import process_invoice
+            process_invoice(db, str(document.id), extracted_data)
+        elif doc_type == "payroll":
+            from modules.invoice_automation.payroll_service import process_payroll
+            process_payroll(db, str(document.id), extracted_data)
+            
+        # Check if vectorized
+        from sqlalchemy import text
+        has_chunks = db.execute(
+            text("SELECT 1 FROM document_chunks WHERE document_id = :doc_id LIMIT 1"),
+            {"doc_id": document.id}
+        ).fetchone() is not None
+            
         logger.info(f"Successfully saved extracted structured data to DB for document: {document.id}")
-        return document
+        
+        return DocumentDetailResponse(
+            filename=document.filename,
+            file_size=document.file_size,
+            mime_type=document.mime_type,
+            id=document.id,
+            extracted_json=document.extracted_json,
+            created_at=document.created_at,
+            content=document.content,
+            is_vectorized=has_chunks,
+            document_type=doc_type or "generic"
+        )
         
     except HTTPException:
         raise
@@ -255,17 +390,27 @@ def index_document(document_id: str, db: Session = Depends(get_db)):
                 detail="No text chunks could be created. Is the document empty?"
             )
             
-        # 2. Generate embeddings for each chunk
+        # 2. Generate embeddings for each chunk and detect which method was used
         logger.info(f"Generating embeddings for {len(chunks)} chunks...")
         embeddings = []
+        indexing_methods_used = set()
         for chunk in chunks:
-            vector = get_embedding(chunk["chunk_text"])
+            vector, method = get_embedding_with_method(chunk["chunk_text"])
             embeddings.append(vector)
+            indexing_methods_used.add(method)
+        
+        indexing_method = "live" if "live" in indexing_methods_used else "mock"
             
         # 3. Store chunks + embeddings in pgvector
         save_document_chunks(db, str(document.id), chunks, embeddings)
         
-        return {"status": "success", "chunks_indexed": len(chunks)}
+        # 4. Persist the indexing_method into extracted_json so the frontend can read it later
+        existing_json = document.extracted_json or {}
+        existing_json["indexing_method"] = indexing_method
+        document.extracted_json = existing_json
+        db.commit()
+        
+        return {"status": "success", "chunks_indexed": len(chunks), "indexing_method": indexing_method}
         
     except HTTPException:
         raise

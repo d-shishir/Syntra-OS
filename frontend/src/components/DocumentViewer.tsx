@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { X, Copy, Check, FileText, Loader2, Info, BrainCircuit, Code, RefreshCw, Database } from "lucide-react";
+import { MethodHudBadge } from "./MethodHudBadge";
 
 interface DocumentDetail {
   id: string;
@@ -28,6 +29,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const [extracting, setExtracting] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [indexSuccess, setIndexSuccess] = useState(false);
+  const [indexingMethod, setIndexingMethod] = useState<"live" | "mock" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("text");
@@ -41,6 +43,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
       setDoc(null);
       setActiveTab("text"); // default to text view
       setIndexSuccess(false);
+      setIndexingMethod(null);
       try {
         const res = await fetch(`${backendUrl}/documents/${documentId}`);
         if (!res.ok) {
@@ -89,9 +92,15 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
         method: "POST",
       });
       if (!res.ok) {
-        throw new Error("Failed to index and vectorize document.");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to index and vectorize document.");
       }
+      const data = await res.json();
       setIndexSuccess(true);
+      setIndexingMethod(data.indexing_method ?? null);
+      // Refresh the document to get updated extracted_json with indexing_method
+      const docRes = await fetch(`${backendUrl}/documents/${documentId}`);
+      if (docRes.ok) setDoc(await docRes.json());
     } catch (err: any) {
       setError(err.message || "Indexing operation failed.");
     } finally {
@@ -165,8 +174,22 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               </button>
             </div>
 
-            {/* Quick Action Triggers */}
-            <div className="flex gap-2 items-center py-2">
+            {/* Quick Action Triggers + HUD Method Badges */}
+            <div className="flex flex-wrap gap-2 items-center py-2 justify-end max-w-[55%]">
+              {/* Method HUD badges – shown after operations complete */}
+              {(doc.extracted_json?.indexing_method || indexingMethod) && (
+                <MethodHudBadge
+                  kind="vector"
+                  method={(indexingMethod ?? doc.extracted_json?.indexing_method) as "live" | "mock"}
+                />
+              )}
+              {doc.extracted_json?.extraction_method && (
+                <MethodHudBadge
+                  kind="extract"
+                  method={doc.extracted_json.extraction_method as "live" | "mock"}
+                />
+              )}
+
               {/* Vector Indexing Action */}
               <button
                 onClick={triggerIndexing}
@@ -260,7 +283,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                   <Database className="w-8 h-8 text-neonTeal animate-spin" />
                   <div className="text-center">
                     <p className="text-sm font-semibold text-gray-200">Vectorizing document content...</p>
-                    <p className="text-xs text-darkMuted mt-0.5">Segmenting text paragraphs & computing embedding vectors</p>
+                    <p className="text-xs text-darkMuted mt-0.5">Segmenting text paragraphs & computing BAAI bge-base-en-v1.5 embeddings</p>
                   </div>
                 </div>
               )}
