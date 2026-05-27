@@ -7,6 +7,7 @@ import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, HelpCir
 import { Dashboard } from "./modules/invoice-automation/Dashboard";
 import { WorkflowDashboard } from "./modules/workflow-engine/WorkflowDashboard";
 import { CrmDashboard } from "./modules/crm-intelligence/CrmDashboard";
+import { WorkerMonitor } from "./modules/background-worker/WorkerMonitor";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -51,7 +52,7 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "catalog" | "search" | "chat" | "finance" | "workflows" | "crm";
+type WorkspaceTab = "catalog" | "search" | "chat" | "finance" | "workflows" | "crm" | "worker";
 
 interface SystemMetrics {
   documents_indexed: number;
@@ -127,6 +128,9 @@ function App() {
   }, []);
 
   const handleTrashDocument = async (id: string) => {
+    if (!window.confirm("Are you sure you want to move this document to the Trash? It will remain in the trash for 30 days before being permanently deleted.")) {
+      return;
+    }
     try {
       const response = await fetch(`${BACKEND_URL}/documents/${id}/trash`, { method: "POST" });
       if (response.ok) {
@@ -510,7 +514,8 @@ function App() {
               { id: "search", label: "Semantic Search", num: "03", activeColor: "border-yellow-500 text-yellow-500 bg-yellow-500/5", icon: Search },
               { id: "finance", label: "Finance Operations", num: "04", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Activity },
               { id: "workflows", label: "Agent Workflows", num: "05", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Cpu },
-              { id: "crm", label: "CRM & Sales Intel", num: "06", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Users }
+              { id: "crm", label: "CRM & Sales Intel", num: "06", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Users },
+              { id: "worker", label: "Worker Queue", num: "07", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Server }
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -911,6 +916,9 @@ function App() {
             )}
             {activeTab === "crm" && (
               <CrmDashboard backendUrl={BACKEND_URL} />
+            )}
+            {activeTab === "worker" && (
+              <WorkerMonitor />
             )}
           </div>
         </div>

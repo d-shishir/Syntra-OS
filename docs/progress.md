@@ -21,20 +21,20 @@ This document maps out the 30-day milestone tracker for the IngestEngine RAG Kno
 - [x] **Day 4**: Grounded RAG QA chat assistant with sources & citations.
 - [x] **Day 5**: AI Invoice & Payroll Automation module (Auditing, Validation checks, Anomalies Engine, Control Panel Dashboard).
 
-### Phase 2: Embedding & Vector Storage (Days 6–15)
+### Phase 2: Embedding, Workflows & Automation (Days 6–15)
 - [ ] **Day 6**: Multi-format support extension (DOCX, TXT, MD, HTML).
-- [ ] **Day 7**: User auth gateway, tenant separation schemas.
-- [ ] **Day 8**: API Rate limiting, file storage offloading to S3.
-- [ ] **Day 9**: Background worker queue setup for async vector synchronization.
-- [ ] **Day 10**: Background worker queue setup for async vector synchronization.
+- [x] **Day 7**: AI Workflow & Agent Orchestration Engine.
+- [x] **Day 8**: CRM Intelligence & AI Sales Automation Module.
+- [x] **Day 9**: Background worker queue setup for async vector synchronization.
+- [ ] **Day 10**: Distributed job scheduling & task analytics dashboard.
 
 ### Phase 3: RAG Core & Prompt Engineering (Days 16–25)
-- [ ] **Day 16**: Prompt template manager, system system prompts version controls.
+- [ ] **Day 16**: Prompt template manager, system prompts version controls.
 - [ ] **Day 17**: Conversation context history tables.
 - [ ] **Day 18**: Chat completion routes with streaming response outputs.
 - [ ] **Day 20**: Citations and source attribution linkages.
 
-### Phase 4: Automation & Deployments (Days 26–30)
+### Phase 4: Deployments & Analytics (Days 26–30)
 - [ ] **Day 26**: CI/CD Pipelines setup.
 - [ ] **Day 28**: Analytical token monitoring dashboards.
 - [ ] **Day 30**: Internal production release.

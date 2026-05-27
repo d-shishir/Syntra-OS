@@ -26,9 +26,11 @@ from .services.metrics import metrics_tracker
 from modules.invoice_automation.router import router as invoice_automation_router
 from modules.workflow_engine.router import router as workflow_engine_router
 from modules.crm_intelligence.router import router as crm_router
+from modules.background_worker.router import router as worker_router
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
+import modules.background_worker.models  # Ensures worker models are imported for metadata creation
 
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
@@ -50,12 +52,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Register the background worker handler
+from modules.background_worker.worker_engine import register_handler, start_worker
+
+class NonClosingSession:
+    def __init__(self, session):
+        self._session = session
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+    def close(self):
+        # Override to prevent early connection pool closing by pipeline execution
+        pass
+
+def integrate_document_pipeline_handler(payload: dict, db: Session):
+    doc_id = payload.get("document_id")
+    integrate_document_pipeline(doc_id, lambda: NonClosingSession(db))
+
+register_handler("document_ingestion", integrate_document_pipeline_handler)
+
+# Start background worker daemon
+start_worker()
+
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # Register the new routers
 app.include_router(invoice_automation_router, prefix="/api/v1/invoice-automation", tags=["Invoice & Payroll Automation"])
 app.include_router(workflow_engine_router, prefix="/api/v1/workflows", tags=["AI Workflow Engine"])
 app.include_router(crm_router, prefix="/api/v1/crm", tags=["CRM & Sales Automation"])
+app.include_router(worker_router, prefix="/api/v1/worker", tags=["Background Worker"])
 
 # Setup CORS
 app.add_middleware(
@@ -221,8 +245,14 @@ async def upload_document(
         
         logger.info(f"Successfully stored document: {file.filename} (ID: {db_doc.id})")
         
-        # Trigger background processing (indexing, extraction, validation, anomalies)
-        background_tasks.add_task(integrate_document_pipeline, str(db_doc.id), SessionLocal)
+        # Trigger background task queue job
+        from modules.background_worker.models import BackgroundTaskJob
+        job = BackgroundTaskJob(
+            task_type="document_ingestion",
+            payload={"document_id": str(db_doc.id)}
+        )
+        db.add(job)
+        db.commit()
         
         return db_doc
         
