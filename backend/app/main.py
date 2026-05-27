@@ -33,6 +33,16 @@ import modules.crm_intelligence.models  # Ensures crm models are imported for me
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
 
+# Migration: Add is_deleted to documents table if it doesn't exist
+from sqlalchemy import text
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"))
+        conn.commit()
+    except Exception:
+        # Ignore if column already exists or database/schema migration not required
+        pass
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -230,12 +240,12 @@ async def upload_document(
         )
 
 @app.get("/documents", response_model=list[DocumentResponse])
-def get_documents(db: Session = Depends(get_db)):
+def get_documents(is_deleted: bool = False, db: Session = Depends(get_db)):
     """
     Retrieve list of uploaded documents (excluding heavy text content for performance).
     """
     try:
-        documents = db.query(Document).order_by(Document.created_at.desc()).all()
+        documents = db.query(Document).filter(Document.is_deleted == is_deleted).order_by(Document.created_at.desc()).all()
         
         # Get list of vectorized document IDs in a single query
         from sqlalchemy import text
@@ -257,7 +267,8 @@ def get_documents(db: Session = Depends(get_db)):
                 extracted_json=doc.extracted_json,
                 created_at=doc.created_at,
                 is_vectorized=doc.id in vectorized_ids,
-                document_type=doc_type
+                document_type=doc_type,
+                is_deleted=doc.is_deleted
             ))
         return result
     except Exception as e:
@@ -266,6 +277,76 @@ def get_documents(db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database query failed: {str(e)}"
         )
+
+@app.post("/documents/{document_id}/trash")
+def trash_document(document_id: str, db: Session = Depends(get_db)):
+    """
+    Move a document to the trash bin (soft delete).
+    """
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found."
+            )
+        document.is_deleted = True
+        db.commit()
+        return {"status": "success", "message": "Document moved to trash"}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Failed to trash document")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@app.post("/documents/{document_id}/restore")
+def restore_document(document_id: str, db: Session = Depends(get_db)):
+    """
+    Restore a document from the trash bin.
+    """
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found."
+            )
+        document.is_deleted = False
+        db.commit()
+        return {"status": "success", "message": "Document restored from trash"}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Failed to restore document")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@app.delete("/documents/{document_id}")
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    """
+    Permanently delete a document from the database (cascades to related tables).
+    """
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found."
+            )
+        db.delete(document)
+        db.commit()
+        return {"status": "success", "message": "Document permanently deleted"}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Failed to permanently delete document")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
 
 @app.get("/documents/{document_id}", response_model=DocumentDetailResponse)
 def get_document_by_id(document_id: str, db: Session = Depends(get_db)):

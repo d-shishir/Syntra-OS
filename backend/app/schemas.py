@@ -16,6 +16,7 @@ class DocumentResponse(DocumentBase):
     created_at: datetime
     is_vectorized: bool = False
     document_type: str = "unclassified"
+    is_deleted: bool = False
 
     class Config:
         from_attributes = True

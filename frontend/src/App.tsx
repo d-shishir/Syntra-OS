@@ -62,6 +62,7 @@ interface SystemMetrics {
 
 function App() {
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
+  const [trashDocuments, setTrashDocuments] = useState<DocumentMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   
@@ -102,12 +103,18 @@ function App() {
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/documents`);
+      const response = await fetch(`${BACKEND_URL}/documents?is_deleted=false`);
       if (!response.ok) {
         throw new Error("Failed to fetch documents.");
       }
       const data = await response.json();
       setDocuments(data);
+
+      const trashResponse = await fetch(`${BACKEND_URL}/documents?is_deleted=true`);
+      if (trashResponse.ok) {
+        const trashData = await trashResponse.json();
+        setTrashDocuments(trashData);
+      }
       setApiConnected(true);
     } catch (error: any) {
       console.error("Error fetching documents:", error);
@@ -118,6 +125,42 @@ function App() {
       setLoading(false);
     }
   }, []);
+
+  const handleTrashDocument = async (id: string) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/documents/${id}/trash`, { method: "POST" });
+      if (response.ok) {
+        fetchDocuments();
+      }
+    } catch (error) {
+      console.error("Error trashing document:", error);
+    }
+  };
+
+  const handleRestoreDocument = async (id: string) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/documents/${id}/restore`, { method: "POST" });
+      if (response.ok) {
+        fetchDocuments();
+      }
+    } catch (error) {
+      console.error("Error restoring document:", error);
+    }
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this document? This will delete all text chunks, extractions, anomalies, and cannot be undone.")) {
+      return;
+    }
+    try {
+      const response = await fetch(`${BACKEND_URL}/documents/${id}`, { method: "DELETE" });
+      if (response.ok) {
+        fetchDocuments();
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+    }
+  };
 
   const fetchAIStatus = useCallback(async () => {
     try {
@@ -507,7 +550,11 @@ function App() {
 
                 <DocumentList
                   documents={documents}
+                  trashDocuments={trashDocuments}
                   onSelectDocument={setSelectedDocId}
+                  onTrashDocument={handleTrashDocument}
+                  onRestoreDocument={handleRestoreDocument}
+                  onDeleteDocument={handleDeleteDocument}
                   isLoading={loading}
                   sidebarOpen={sidebarOpen}
                 />

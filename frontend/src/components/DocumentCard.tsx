@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, HardDrive, Calendar, Eye } from "lucide-react";
+import { FileText, HardDrive, Calendar, Eye, Trash2, RotateCcw } from "lucide-react";
 import type { DocumentMetadata } from "./DocumentList";
 import { ClassificationBadge } from "./ClassificationBadge";
 import { IndexingStatusBadge } from "./IndexingStatusBadge";
@@ -9,6 +9,10 @@ interface DocumentCardProps {
   onSelectDocument: (id: string) => void;
   formatBytes: (bytes: number) => string;
   formatDate: (dateStr: string) => string;
+  onTrash?: (id: string) => void;
+  onRestore?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  isTrash?: boolean;
 }
 
 export const DocumentCard: React.FC<DocumentCardProps> = ({
@@ -16,6 +20,10 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
   onSelectDocument,
   formatBytes,
   formatDate,
+  onTrash,
+  onRestore,
+  onDelete,
+  isTrash = false,
 }) => {
   return (
     <div
@@ -59,18 +67,57 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
         />
       </div>
 
-      <div className="flex items-center justify-between border-t border-darkBorder/40 pt-3 mt-1">
+      <div className="flex items-center justify-between border-t border-darkBorder/40 pt-3 mt-1 gap-2">
         <span className="text-[9px] uppercase font-mono text-darkMuted">
-          Ingested
+          {isTrash ? "Trashed" : "Ingested"}
         </span>
-        <button
-          onClick={() => onSelectDocument(doc.id)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-neonIndigo/10 hover:bg-neonIndigo text-neonIndigo hover:text-white border border-neonIndigo/20 hover:border-neonIndigo transition-all cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          Preview
-        </button>
+        <div className="flex gap-2">
+          {!isTrash ? (
+            <>
+              <button
+                onClick={() => onSelectDocument(doc.id)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-neonIndigo/10 hover:bg-neonIndigo text-neonIndigo hover:text-white border border-neonIndigo/20 hover:border-neonIndigo transition-all cursor-pointer"
+                title="Preview"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Preview</span>
+              </button>
+              {onTrash && (
+                <button
+                  onClick={() => onTrash(doc.id)}
+                  className="p-1.5 text-xs font-semibold rounded-lg bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 hover:border-red-500 transition-all cursor-pointer"
+                  title="Move to Trash"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {onRestore && (
+                <button
+                  onClick={() => onRestore(doc.id)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-neonTeal/10 hover:bg-neonTeal text-neonTeal hover:text-white border border-neonTeal/20 hover:border-neonTeal transition-all cursor-pointer"
+                  title="Restore"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restore</span>
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(doc.id)}
+                  className="p-1.5 text-xs font-semibold rounded-lg bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-600/30 hover:border-red-600 transition-all cursor-pointer"
+                  title="Delete Permanently"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 };
+
