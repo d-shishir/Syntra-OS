@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Integer, DateTime, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
-from backend.app.database import Base
+from app.database import Base
 
 class BackgroundTaskJob(Base):
     __tablename__ = "background_task_jobs"

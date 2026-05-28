@@ -3,7 +3,7 @@ import traceback
 import threading
 import logging
 from sqlalchemy import func
-from backend.app.database import SessionLocal
+from app.database import SessionLocal
 from .models import BackgroundTaskJob
 
 logger = logging.getLogger(__name__)

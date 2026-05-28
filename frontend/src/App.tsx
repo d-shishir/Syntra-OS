@@ -3,13 +3,14 @@ import { FileUpload } from "./components/FileUpload";
 import { DocumentList } from "./components/DocumentList";
 import type { DocumentMetadata } from "./components/DocumentList";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, CheckCircle2, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff, Users } from "lucide-react";
+import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, CheckCircle2, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff, Users, ShieldAlert } from "lucide-react";
 import { Dashboard } from "./modules/invoice-automation/Dashboard";
 import { WorkflowDashboard } from "./modules/workflow-engine/WorkflowDashboard";
 import { CrmDashboard } from "./modules/crm-intelligence/CrmDashboard";
 import { WorkerMonitor } from "./modules/background-worker/WorkerMonitor";
 import { AgentDashboard } from "./modules/multi-agent-system/AgentDashboard";
 import { ObservabilityDashboard } from "./modules/observability/ObservabilityDashboard";
+import { ReviewQueueDashboard } from "./modules/human-review/ReviewQueueDashboard";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -54,7 +55,7 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "hub" | "assistant" | "automation" | "worker" | "agents" | "observability";
+type WorkspaceTab = "hub" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review";
 
 interface SystemMetrics {
   documents_indexed: number;
@@ -310,9 +311,10 @@ function App() {
     { id: "assistant", label: "Document Assistant", num: "01", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: MessageSquare },
     { id: "automation", label: "Business Automation", num: "02", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sliders },
     { id: "agents", label: "Multi-Agent System", num: "03", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
+    { id: "review", label: "Human Review", num: "04", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: ShieldAlert },
     ...(isAdvancedMode ? [
-      { id: "worker", label: "Worker Queue", num: "04", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Server },
-      { id: "observability", label: "Observability", num: "05", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Activity }
+      { id: "worker", label: "Worker Queue", num: "05", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Server },
+      { id: "observability", label: "Observability", num: "06", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Activity }
     ] : [])
   ];
 
@@ -1209,6 +1211,10 @@ function App() {
 
             {activeTab === "observability" && (
               <ObservabilityDashboard backendUrl={BACKEND_URL} />
+            )}
+
+            {activeTab === "review" && (
+              <ReviewQueueDashboard backendUrl={BACKEND_URL} />
             )}
           </div>
         </div>

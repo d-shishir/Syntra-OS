@@ -35,6 +35,8 @@ import modules.crm_intelligence.models  # Ensures crm models are imported for me
 import modules.background_worker.models  # Ensures worker models are imported for metadata creation
 import modules.multi_agent_system.models  # Ensures multi-agent models are imported for metadata creation
 import modules.observability.models  # Ensures observability models are imported for metadata creation
+import modules.human_review_system.models  # Ensures human review models are imported for metadata creation
+from modules.human_review_system.router import router as reviews_router
 
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
@@ -86,6 +88,7 @@ app.include_router(crm_router, prefix="/api/v1/crm", tags=["CRM & Sales Automati
 app.include_router(worker_router, prefix="/api/v1/worker", tags=["Background Worker"])
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["Multi-Agent AI System"])
 app.include_router(observability_router, prefix="/api/v1/observability", tags=["Observability & Monitoring"])
+app.include_router(reviews_router, prefix="/api/v1/reviews", tags=["Human-in-the-Loop Review Queue"])
 
 # Setup CORS
 app.add_middleware(

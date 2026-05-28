@@ -52,126 +52,126 @@ class AgentManager:
         try:
             # 1. RAG Research Tool matching
             if agent_key == "research_agent" or "rag_search" in agent.get("capabilities", []):
-            query = context.get("query") or task_description
-            limit = context.get("limit", 3)
-            communication_bus.send_message(
-                db=db,
-                workflow_run_id=workflow_run_id,
-                sender=agent_key,
-                recipient="system_bus",
-                message_type="system_broadcast",
-                content=f"Research agent querying Vector DB for context: '{query}'"
-            )
-            result = tool_registry.execute_tool("search_vector_db", db, context, query=query, limit=limit)
-            tool_executed = "search_vector_db"
-
-        # 2. Finance Tool matching
-        elif agent_key == "finance_agent":
-            doc_id = context.get("document_id")
-            if doc_id:
-                if "anomaly_review" in task_description.lower() or "anomaly" in task_description.lower():
-                    communication_bus.send_message(
-                        db=db,
-                        workflow_run_id=workflow_run_id,
-                        sender=agent_key,
-                        recipient="system_bus",
-                        message_type="system_broadcast",
-                        content=f"Finance agent auditing document {doc_id} for discrepancies."
-                    )
-                    result = tool_registry.execute_tool("detect_anomalies", db, context, document_id=doc_id)
-                    tool_executed = "detect_anomalies"
-                else:
-                    communication_bus.send_message(
-                        db=db,
-                        workflow_run_id=workflow_run_id,
-                        sender=agent_key,
-                        recipient="system_bus",
-                        message_type="system_broadcast",
-                        content=f"Finance agent running structural extraction on doc {doc_id}."
-                    )
-                    result = tool_registry.execute_tool("extract_document", db, context, document_id=doc_id)
-                    tool_executed = "extract_document"
-            else:
-                # If no doc_id, perform generic financial calculation simulation
-                result = {
-                    "status": "success",
-                    "analysis": "No document provided. Running aggregate financial simulation.",
-                    "stats": {"total_invoices": 12, "active_warnings": 2}
-                }
-
-        # 3. CRM Tool matching
-        elif agent_key == "crm_agent":
-            lead_id = context.get("lead_id")
-            # If lead context is provided, enrich or score lead
-            if lead_id:
+                query = context.get("query") or task_description
+                limit = context.get("limit", 3)
                 communication_bus.send_message(
                     db=db,
                     workflow_run_id=workflow_run_id,
                     sender=agent_key,
                     recipient="system_bus",
                     message_type="system_broadcast",
-                    content=f"CRM Agent enriching lead fit metrics for prospect ID: {lead_id}"
+                    content=f"Research agent querying Vector DB for context: '{query}'"
                 )
-                
-                # Retrieve lead
-                from modules.crm_intelligence.models import Lead
-                lead = db.query(Lead).filter(Lead.id == lead_id).first()
-                
-                if lead:
-                    # Mock lead fit score calculation & outreach template compilation
-                    outreach = {
-                        "email": f"Subject: Evolving Syntra OS at {lead.company}\n\nHi {lead.name},\n\nI noticed you manage operations. Let's automate your pipelines.",
-                        "linkedin": f"Hi {lead.name}, let's connect on enterprise AI consolidation."
-                    }
-                    lead.outreach_templates = outreach
-                    lead.lead_score = 85
-                    lead.scoring_reasoning = "Enriched by Multi-Agent CRM pipeline."
-                    db.commit()
+                result = tool_registry.execute_tool("search_vector_db", db, context, query=query, limit=limit)
+                tool_executed = "search_vector_db"
+
+            # 2. Finance Tool matching
+            elif agent_key == "finance_agent":
+                doc_id = context.get("document_id")
+                if doc_id:
+                    if "anomaly_review" in task_description.lower() or "anomaly" in task_description.lower():
+                        communication_bus.send_message(
+                            db=db,
+                            workflow_run_id=workflow_run_id,
+                            sender=agent_key,
+                            recipient="system_bus",
+                            message_type="system_broadcast",
+                            content=f"Finance agent auditing document {doc_id} for discrepancies."
+                        )
+                        result = tool_registry.execute_tool("detect_anomalies", db, context, document_id=doc_id)
+                        tool_executed = "detect_anomalies"
+                    else:
+                        communication_bus.send_message(
+                            db=db,
+                            workflow_run_id=workflow_run_id,
+                            sender=agent_key,
+                            recipient="system_bus",
+                            message_type="system_broadcast",
+                            content=f"Finance agent running structural extraction on doc {doc_id}."
+                        )
+                        result = tool_registry.execute_tool("extract_document", db, context, document_id=doc_id)
+                        tool_executed = "extract_document"
+                else:
+                    # If no doc_id, perform generic financial calculation simulation
                     result = {
                         "status": "success",
-                        "lead_score": 85,
-                        "outreach_templates": outreach
+                        "analysis": "No document provided. Running aggregate financial simulation.",
+                        "stats": {"total_invoices": 12, "active_warnings": 2}
                     }
-                    tool_executed = "generate_outreach"
-                else:
-                    result = {"status": "failed", "error": f"Lead {lead_id} not found."}
-            else:
-                # Default text/outreach template generator
-                result = {
-                    "status": "success",
-                    "outreach_templates": {
-                        "email": "Subject: Automate payables with Syntra OS\n\nHi Team,\n\nLet's integrate our invoicing pipelines today."
-                    }
-                }
 
-        # 4. Workflow Agent matching
-        elif agent_key == "workflow_agent":
-            # Run named workflow if specified
-            workflow_id = context.get("workflow_id")
-            if workflow_id:
-                communication_bus.send_message(
-                    db=db,
-                    workflow_run_id=workflow_run_id,
-                    sender=agent_key,
-                    recipient="system_bus",
-                    message_type="system_broadcast",
-                    content=f"Workflow Agent executing run pipeline: {workflow_id}"
-                )
-                # Simulated execution
-                result = {
-                    "status": "success",
-                    "workflow_id": workflow_id,
-                    "execution_time_ms": 420,
-                    "steps_completed": ["extract_document", "detect_anomalies"]
-                }
-                tool_executed = "execute_workflows"
-            else:
-                # Fallback notify alert
-                recipient = context.get("recipient", "ops@syntra.os")
-                subject = context.get("subject", "Agent Workflow Alert")
-                body = context.get("body", "Notification sent from automated agent.")
-                result = tool_registry.execute_tool("send_email", db, context, recipient=recipient, subject=subject, body=body)
-                tool_executed = "send_email"
+            # 3. CRM Tool matching
+            elif agent_key == "crm_agent":
+                lead_id = context.get("lead_id")
+                # If lead context is provided, enrich or score lead
+                if lead_id:
+                    communication_bus.send_message(
+                        db=db,
+                        workflow_run_id=workflow_run_id,
+                        sender=agent_key,
+                        recipient="system_bus",
+                        message_type="system_broadcast",
+                        content=f"CRM Agent enriching lead fit metrics for prospect ID: {lead_id}"
+                    )
+                    
+                    # Retrieve lead
+                    from modules.crm_intelligence.models import Lead
+                    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+                    
+                    if lead:
+                        # Mock lead fit score calculation & outreach template compilation
+                        outreach = {
+                            "email": f"Subject: Evolving Syntra OS at {lead.company}\n\nHi {lead.name},\n\nI noticed you manage operations. Let's automate your pipelines.",
+                            "linkedin": f"Hi {lead.name}, let's connect on enterprise AI consolidation."
+                        }
+                        lead.outreach_templates = outreach
+                        lead.lead_score = 85
+                        lead.scoring_reasoning = "Enriched by Multi-Agent CRM pipeline."
+                        db.commit()
+                        result = {
+                            "status": "success",
+                            "lead_score": 85,
+                            "outreach_templates": outreach
+                        }
+                        tool_executed = "generate_outreach"
+                    else:
+                        result = {"status": "failed", "error": f"Lead {lead_id} not found."}
+                else:
+                    # Default text/outreach template generator
+                    result = {
+                        "status": "success",
+                        "outreach_templates": {
+                            "email": "Subject: Automate payables with Syntra OS\n\nHi Team,\n\nLet's integrate our invoicing pipelines today."
+                        }
+                    }
+
+            # 4. Workflow Agent matching
+            elif agent_key == "workflow_agent":
+                # Run named workflow if specified
+                workflow_id = context.get("workflow_id")
+                if workflow_id:
+                    communication_bus.send_message(
+                        db=db,
+                        workflow_run_id=workflow_run_id,
+                        sender=agent_key,
+                        recipient="system_bus",
+                        message_type="system_broadcast",
+                        content=f"Workflow Agent executing run pipeline: {workflow_id}"
+                    )
+                    # Simulated execution
+                    result = {
+                        "status": "success",
+                        "workflow_id": workflow_id,
+                        "execution_time_ms": 420,
+                        "steps_completed": ["extract_document", "detect_anomalies"]
+                    }
+                    tool_executed = "execute_workflows"
+                else:
+                    # Fallback notify alert
+                    recipient = context.get("recipient", "ops@syntra.os")
+                    subject = context.get("subject", "Agent Workflow Alert")
+                    body = context.get("body", "Notification sent from automated agent.")
+                    result = tool_registry.execute_tool("send_email", db, context, recipient=recipient, subject=subject, body=body)
+                    tool_executed = "send_email"
 
         except Exception as e:
             tool_status = "failed"

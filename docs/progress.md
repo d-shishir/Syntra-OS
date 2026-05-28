@@ -28,6 +28,7 @@ This document maps out the 30-day milestone tracker for the IngestEngine RAG Kno
 - [x] **Day 9**: Background worker queue setup for async vector synchronization.
 - [x] **Day 10**: Multi-Agent AI Operations Swarm Integration.
 - [x] **Day 11**: AI Observability, Monitoring & Debugging System.
+- [x] **Day 12**: Human-in-the-Loop Approval & Review System.
 
 ### Phase 3: RAG Core & Prompt Engineering (Days 16–25)
 - [ ] **Day 16**: Prompt template manager, system prompts version controls.
