@@ -39,6 +39,7 @@ import modules.human_review_system.models  # Ensures human review models are imp
 import modules.event_system.models  # Ensures event system models are imported for metadata creation
 import modules.notification_hub.models  # Ensures notification hub models are imported for metadata creation
 import modules.auth_system.models  # Ensures auth system models are imported for metadata creation
+import modules.knowledge_graph.models  # Ensures knowledge graph models are imported for metadata creation
 from modules.human_review_system.router import router as reviews_router
 
 # Auto create tables if not exists
@@ -95,6 +96,10 @@ start_workers()
 from modules.notification_hub.notification_manager import subscribe_notification_listeners
 subscribe_notification_listeners()
 
+# Start Knowledge Graph listeners
+from modules.knowledge_graph.graph_sync_service import register_graph_sync_subscribers
+register_graph_sync_subscribers()
+
 # Seed default users on startup
 from modules.auth_system.router import seed_default_users
 with SessionLocal() as db_session:
@@ -125,6 +130,9 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["Unified 
 
 from modules.ai_copilot.router import router as copilot_router
 app.include_router(copilot_router, prefix="/api/v1/copilot", tags=["AI Copilot Control Center"])
+
+from modules.knowledge_graph.router import router as graph_router
+app.include_router(graph_router, prefix="/api/v1/graph", tags=["Knowledge Graph & Intelligence Layer"])
 
 # Setup CORS
 app.add_middleware(

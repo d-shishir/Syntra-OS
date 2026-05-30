@@ -180,7 +180,7 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
             }
 
         # 8. RAG Query
-        else: # rag_query
+        elif intent == "rag_query":
             question = entities.get("question")
             from app.services.rag_pipeline import ask_question_rag
             res = ask_question_rag(db, question)
@@ -193,6 +193,53 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                 },
                 "type": "rag_answer"
             }
+
+        # 9. Knowledge Graph Query
+        elif intent == "query_graph":
+            q_text = entities.get("query", "")
+            # Heuristically extract keyword
+            keyword = q_text.lower().replace("graph", "").replace("related to", "").replace("linked to", "").replace("show everything", "").replace("about", "").strip()
+            if not keyword:
+                keyword = "Acme Corp" # Default seed fallback
+            
+            from modules.knowledge_graph.graph_query_engine import GraphQueryEngine
+            engine = GraphQueryEngine()
+            result = engine.query_graph_by_keyword(db, keyword)
+            return {
+                "success": True,
+                "message": f"Successfully retrieved Knowledge Graph relationships for '{keyword}'.",
+                "data": result,
+                "type": "graph_subgraph"
+            }
+
+        # 10. Graph Impact Analysis
+        elif intent == "graph_impact_analysis":
+            q_text = entities.get("query", "")
+            # Heuristically parse target and type
+            name = q_text.replace("impact", "").replace("analysis", "").replace("of", "").replace(":", "").strip()
+            etype = "workflow"
+            if "dept" in q_text.lower() or "department" in q_text.lower():
+                etype = "department"
+                name = name.replace("dept", "").replace("department", "").strip()
+            elif "invoice" in q_text.lower():
+                etype = "invoice"
+                name = name.replace("invoice", "").strip()
+            
+            if not name:
+                name = "Payroll Validation"
+            
+            from modules.knowledge_graph.graph_query_engine import GraphQueryEngine
+            engine = GraphQueryEngine()
+            result = engine.run_impact_analysis(db, name, etype)
+            return {
+                "success": True,
+                "message": f"Compiled blast radius impact analysis details for target '{name}'.",
+                "data": result,
+                "type": "graph_impact"
+            }
+
+        else:
+            raise ValueError(f"Unknown intent pattern: {intent}")
             
     except Exception as e:
         logger.error(f"Copilot tool execution failed: {str(e)}", exc_info=True)

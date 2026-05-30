@@ -3,7 +3,7 @@ import { FileUpload } from "./components/FileUpload";
 import { DocumentList } from "./components/DocumentList";
 import type { DocumentMetadata } from "./components/DocumentList";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, CheckCircle2, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff, Users, ShieldAlert, Bell, Lock } from "lucide-react";
+import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, CheckCircle2, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff, Users, ShieldAlert, Bell, Lock, Network } from "lucide-react";
 import { Dashboard } from "./modules/invoice-automation/Dashboard";
 import { WorkflowDashboard } from "./modules/workflow-engine/WorkflowDashboard";
 import { CrmDashboard } from "./modules/crm-intelligence/CrmDashboard";
@@ -16,6 +16,7 @@ import { NotificationDashboard } from "./modules/notification-center/Notificatio
 import { AuthDashboard } from "./modules/auth-access/AuthDashboard";
 import { UnifiedDashboard } from "./modules/unified-dashboard/UnifiedDashboard";
 import { CopilotDashboard } from "./modules/ai-copilot/CopilotDashboard";
+import { GraphDashboard } from "./modules/knowledge-graph/GraphDashboard";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -60,7 +61,7 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "hub" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review" | "events" | "notifications" | "auth";
+type WorkspaceTab = "hub" | "copilot" | "graph" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review" | "events" | "notifications" | "auth";
 
 interface SystemMetrics {
   documents_indexed: number;
@@ -314,6 +315,7 @@ function App() {
   const tabsList = [
     { id: "hub", label: "Control Center", num: "00", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Cpu },
     { id: "copilot", label: "AI Copilot", num: "AI", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
+    { id: "graph", label: "Knowledge Graph", num: "KG", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Network },
     { id: "assistant", label: "Document Assistant", num: "01", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: MessageSquare },
     { id: "automation", label: "Business Automation", num: "02", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sliders },
     { id: "agents", label: "Multi-Agent System", num: "03", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
@@ -628,6 +630,10 @@ function App() {
 
             {activeTab === "copilot" && (
               <CopilotDashboard />
+            )}
+
+            {activeTab === "graph" && (
+              <GraphDashboard />
             )}
 
             {activeTab === "assistant" && (

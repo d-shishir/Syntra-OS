@@ -23,7 +23,7 @@ def parse_intent(query: str) -> dict:
             system_prompt = (
                 "You are the Syntra OS Copilot Command Parser. Convert the user's natural language command "
                 "into a structured JSON payload containing: \n"
-                "1. 'intent': 'workflow_query' | 'workflow_trigger' | 'crm_query' | 'finance_query' | 'anomaly_check' | 'approval_action' | 'rag_query' | 'agent_delegate'\n"
+                "1. 'intent': 'workflow_query' | 'workflow_trigger' | 'crm_query' | 'finance_query' | 'anomaly_check' | 'approval_action' | 'rag_query' | 'agent_delegate' | 'query_graph' | 'graph_impact_analysis'\n"
                 "2. 'entities': dictionary of parameters extracted from the text (e.g. 'status', 'workflow_id', 'query', 'action', 'question', 'comments', 'task')\n\n"
                 "Return ONLY raw JSON. No markdown backticks."
             )
@@ -51,6 +51,12 @@ def parse_intent(query: str) -> dict:
     # 2. Heuristic Heuristic Fallback Engine
     entities = {}
     
+    # Graph & Impact Analysis queries
+    if "impact" in query_lower:
+        return {"intent": "graph_impact_analysis", "entities": {"query": query}}
+    elif "related to" in query_lower or "linked to" in query_lower or "show everything" in query_lower or "graph" in query_lower:
+        return {"intent": "query_graph", "entities": {"query": query}}
+
     # Workflow triggers
     if "run compliance" in query_lower or "compliance check" in query_lower:
         return {"intent": "workflow_trigger", "entities": {"workflow_id": "doc_verification_pipeline"}}

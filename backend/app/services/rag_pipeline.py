@@ -166,6 +166,17 @@ def ask_question_rag(db: Session, query: str) -> dict:
         # Build prompt payload with grounding instructions
         system_prompt, user_content = build_prompt_payload(query_str, formatted_chunks)
         
+        # Inject Knowledge Graph relationships context (Graph-Enhanced RAG)
+        try:
+            from modules.knowledge_graph.graph_query_engine import GraphQueryEngine
+            graph_engine = GraphQueryEngine()
+            graph_context = graph_engine.find_relationships_context(db, query_str)
+            if graph_context:
+                logger.info(f"RAG: Found graph context for query, prepending to user prompt content.")
+                user_content = graph_context + "\n" + user_content
+        except Exception as ge_error:
+            logger.warning(f"RAG: Failed to retrieve graph relationships context: {str(ge_error)}")
+        
         # 4. LLM Generation
         gen_start = time.perf_counter()
         if settings.OPENAI_API_KEY:
