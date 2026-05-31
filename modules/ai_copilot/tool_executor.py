@@ -238,6 +238,22 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                 "type": "graph_impact"
             }
 
+        # 11. Unified Enterprise Search
+        elif intent == "enterprise_search":
+            q_text = entities.get("query", "")
+            role = current_user.role if current_user else "guest"
+            dept = current_user.department if current_user else None
+            
+            from modules.enterprise_search.search_engine import EnterpriseSearchEngine
+            engine = EnterpriseSearchEngine()
+            result = engine.search(db, q_text, user_role=role, user_department=dept)
+            return {
+                "success": True,
+                "message": "Aggregated unified search query successfully.",
+                "data": result,
+                "type": "search_results"
+            }
+
         else:
             raise ValueError(f"Unknown intent pattern: {intent}")
             

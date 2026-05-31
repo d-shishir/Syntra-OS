@@ -56,6 +56,8 @@ def parse_intent(query: str) -> dict:
         return {"intent": "graph_impact_analysis", "entities": {"query": query}}
     elif "related to" in query_lower or "linked to" in query_lower or "show everything" in query_lower or "graph" in query_lower:
         return {"intent": "query_graph", "entities": {"query": query}}
+    elif "search" in query_lower or "find all" in query_lower:
+        return {"intent": "enterprise_search", "entities": {"query": query}}
 
     # Workflow triggers
     if "run compliance" in query_lower or "compliance check" in query_lower:
