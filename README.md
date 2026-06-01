@@ -82,3 +82,9 @@ Detailed engineering design documents can be found inside the `/docs` folder:
 - **System Overview**: [docs/README.md](./docs/README.md)
 - **Detailed Design & Dataflow**: [docs/architecture.md](./docs/architecture.md)
 - **Pipeline Progress Tracker**: [docs/progress.md](./docs/progress.md)
+
+---
+
+## 📄 Open Source License
+This project is open-source and released under the **MIT License**. See the [LICENSE](file:///Users/shishirlamichhane/Documents/Projects/AI%20DOCUMENT%20INGESTION%20SYSTEM/LICENSE) file for details. Contributions and modifications are welcome!
+
