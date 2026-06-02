@@ -254,6 +254,30 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                 "type": "search_results"
             }
 
+        # 12. Autonomous AI Research Engine
+        elif intent == "run_research":
+            goal = entities.get("goal", "")
+            
+            from modules.ai_research_engine.research_planner import ResearchPlanner
+            from modules.ai_research_engine.insight_synthesizer import InsightSynthesizer
+            from modules.ai_research_engine.report_generator import ReportGenerator
+            
+            # Formulate rapid synchronous plan and findings for Copilot display
+            planner = ResearchPlanner()
+            synthesizer = InsightSynthesizer()
+            generator = ReportGenerator()
+            
+            sub_tasks = planner.generate_plan(goal)
+            insights = synthesizer.synthesize(goal, [])
+            report = generator.generate(goal, insights, [])
+            
+            return {
+                "success": True,
+                "message": f"Orchestrated research study for: '{goal}'. Report synthesized successfully.",
+                "data": report,
+                "type": "research_report"
+            }
+
         else:
             raise ValueError(f"Unknown intent pattern: {intent}")
             

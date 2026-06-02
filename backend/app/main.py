@@ -41,6 +41,7 @@ import modules.notification_hub.models  # Ensures notification hub models are im
 import modules.auth_system.models  # Ensures auth system models are imported for metadata creation
 import modules.knowledge_graph.models  # Ensures knowledge graph models are imported for metadata creation
 import modules.enterprise_search.models  # Ensures search query logs models are imported for metadata creation
+import modules.ai_research_engine.models  # Ensures research engine models are imported for metadata creation
 from modules.human_review_system.router import router as reviews_router
 
 # Auto create tables if not exists
@@ -141,6 +142,9 @@ app.include_router(graph_router, prefix="/api/v1/graph", tags=["Knowledge Graph 
 
 from modules.enterprise_search.router import router as search_router
 app.include_router(search_router, prefix="/api/v1/search", tags=["Enterprise Search Engine"])
+
+from modules.ai_research_engine.router import router as research_router
+app.include_router(research_router, prefix="/api/v1/research", tags=["Autonomous AI Research Engine"])
 
 # Setup CORS
 app.add_middleware(

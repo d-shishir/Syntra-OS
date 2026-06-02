@@ -18,6 +18,7 @@ import { UnifiedDashboard } from "./modules/unified-dashboard/UnifiedDashboard";
 import { CopilotDashboard } from "./modules/ai-copilot/CopilotDashboard";
 import { GraphDashboard } from "./modules/knowledge-graph/GraphDashboard";
 import { SearchDashboard } from "./modules/enterprise-search/SearchDashboard";
+import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -62,7 +63,7 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "hub" | "copilot" | "graph" | "search" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review" | "events" | "notifications" | "auth";
+type WorkspaceTab = "hub" | "copilot" | "graph" | "search" | "research" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review" | "events" | "notifications" | "auth";
 
 interface SystemMetrics {
   documents_indexed: number;
@@ -318,6 +319,7 @@ function App() {
     { id: "copilot", label: "AI Copilot", num: "AI", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
     { id: "graph", label: "Knowledge Graph", num: "KG", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Network },
     { id: "search", label: "Enterprise Search", num: "SR", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Search },
+    { id: "research", label: "Research Lab", num: "RL", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: BookOpen },
     { id: "assistant", label: "Document Assistant", num: "01", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: MessageSquare },
     { id: "automation", label: "Business Automation", num: "02", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sliders },
     { id: "agents", label: "Multi-Agent System", num: "03", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
@@ -640,6 +642,10 @@ function App() {
 
             {activeTab === "search" && (
               <SearchDashboard />
+            )}
+
+            {activeTab === "research" && (
+              <ResearchDashboard />
             )}
 
             {activeTab === "assistant" && (
