@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Network, Search, Filter, ShieldAlert, Cpu, Database, RefreshCw, BarChart2, Share2, Layers, AlertTriangle, Play, HelpCircle } from "lucide-react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { Network, Search, Filter, Cpu, RefreshCw, Share2, AlertTriangle, BarChart2, ShieldAlert, Layers, Database, Play, HelpCircle } from "lucide-react";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -41,60 +41,178 @@ export function GraphDashboard() {
   const [impactAnalysisResult, setImpactAnalysisResult] = useState<any>(null);
   const [analyzingImpact, setAnalyzingImpact] = useState<boolean>(false);
   
-  // Graph positions state for custom SVG renderer
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  // Force-simulation refs — positions are mutated in-place for perf, not stored in React state
+  const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const simRef = useRef<{
+    positions: Record<string, { x: number; y: number; vx: number; vy: number; pinned?: boolean }>;
+    raf: number;
+    width: number;
+    height: number;
+  }>({
+    positions: {},
+    raf: 0,
+    width: 600,
+    height: 420,
+  });
+  // Force a re-render when we want React to sync to sim state (e.g. on node click)
+  const [simTick, setSimTick] = useState(0);
+  const selectedNodeRef = useRef<GraphNode | null>(null);
+
+  // Track SVG container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      simRef.current.width = width || 600;
+      simRef.current.height = height || 420;
+      if (svgRef.current) {
+        svgRef.current.setAttribute("viewBox", `0 0 ${simRef.current.width} ${simRef.current.height}`);
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // ── Force Simulation ───────────────────────────────────────
+  // Declared FIRST so fetchData can reference it in its dependency array
+  const startForceSimulation = useCallback((nodeList: GraphNode[], edgeList: GraphEdge[]) => {
+    cancelAnimationFrame(simRef.current.raf);
+
+    const { width, height } = simRef.current;
+    const cx = width / 2;
+    const cy = height / 2;
+    const count = nodeList.length;
+
+    // Seed initial positions in a jittered circle (preserve existing positions)
+    nodeList.forEach((node, index) => {
+      if (!simRef.current.positions[node.id]) {
+        const angle = (index / (count || 1)) * 2 * Math.PI;
+        const r = Math.min(width, height) * 0.3 + (Math.random() - 0.5) * 50;
+        simRef.current.positions[node.id] = {
+          x: cx + r * Math.cos(angle),
+          y: cy + r * Math.sin(angle),
+          vx: 0, vy: 0,
+        };
+      }
+    });
+
+    const REPULSION  = 3200;
+    const SPRING_K   = 0.04;
+    const REST_LEN   = 120;
+    const GRAVITY    = 0.012;
+    const DAMPING    = 0.82;
+    const MAX_ITER   = 300;
+    let tick = 0;
+
+    const step = () => {
+      const pos = simRef.current.positions;
+      const nodeIds = nodeList.map(n => n.id);
+
+      for (let i = 0; i < nodeIds.length; i++) {
+        for (let j = i + 1; j < nodeIds.length; j++) {
+          const a = pos[nodeIds[i]];
+          const b = pos[nodeIds[j]];
+          if (!a || !b) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = REPULSION / (dist * dist);
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          if (!a.pinned) { a.vx -= fx; a.vy -= fy; }
+          if (!b.pinned) { b.vx += fx; b.vy += fy; }
+        }
+      }
+
+      edgeList.forEach(edge => {
+        const a = pos[edge.source_id];
+        const b = pos[edge.target_id];
+        if (!a || !b) return;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const stretch = dist - REST_LEN;
+        const fx = (dx / dist) * stretch * SPRING_K;
+        const fy = (dy / dist) * stretch * SPRING_K;
+        if (!a.pinned) { a.vx += fx; a.vy += fy; }
+        if (!b.pinned) { b.vx -= fx; b.vy -= fy; }
+      });
+
+      nodeIds.forEach(id => {
+        const p = pos[id];
+        if (!p || p.pinned) return;
+        p.vx += (cx - p.x) * GRAVITY;
+        p.vy += (cy - p.y) * GRAVITY;
+        p.vx *= DAMPING;
+        p.vy *= DAMPING;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.x = Math.max(20, Math.min(width - 20, p.x));
+        p.y = Math.max(20, Math.min(height - 20, p.y));
+      });
+
+      if (svgRef.current) {
+        nodeIds.forEach(id => {
+          const p = pos[id];
+          if (!p) return;
+          const nodeG = svgRef.current!.querySelector(`[data-node-id="${id}"]`) as SVGGElement | null;
+          if (nodeG) nodeG.setAttribute("transform", `translate(${p.x},${p.y})`);
+        });
+        edgeList.forEach(edge => {
+          const a = pos[edge.source_id];
+          const b = pos[edge.target_id];
+          const lineEl = svgRef.current!.querySelector(`[data-edge-id="${edge.id}"]`) as SVGLineElement | null;
+          if (lineEl && a && b) {
+            lineEl.setAttribute("x1", String(a.x));
+            lineEl.setAttribute("y1", String(a.y));
+            lineEl.setAttribute("x2", String(b.x));
+            lineEl.setAttribute("y2", String(b.y));
+          }
+          const lblEl = svgRef.current!.querySelector(`[data-edge-lbl="${edge.id}"]`) as SVGTextElement | null;
+          if (lblEl && a && b) {
+            lblEl.setAttribute("x", String((a.x + b.x) / 2));
+            lblEl.setAttribute("y", String((a.y + b.y) / 2 - 4));
+          }
+        });
+      }
+
+      tick++;
+      if (tick < MAX_ITER) simRef.current.raf = requestAnimationFrame(step);
+    };
+
+    simRef.current.raf = requestAnimationFrame(step);
+  }, []);
 
   // Fetch Graph Data & Analytics
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch visualization topology
       const visRes = await fetch(`${BACKEND_URL}/api/v1/graph/visualization`);
       if (visRes.ok) {
         const visData = await visRes.json();
-        setNodes(visData.nodes || []);
-        setEdges(visData.edges || []);
-        
-        // Calculate initial coordinates for nodes
-        generatePositions(visData.nodes || []);
+        const nodeList: GraphNode[] = visData.nodes || [];
+        const edgeList: GraphEdge[] = visData.edges || [];
+        setNodes(nodeList);
+        setEdges(edgeList);
+        simRef.current.positions = {};
+        startForceSimulation(nodeList, edgeList);
       }
-      
-      // Fetch analytics
+
       const analRes = await fetch(`${BACKEND_URL}/api/v1/graph/analytics`);
-      if (analRes.ok) {
-        const analData = await analRes.json();
-        setAnalytics(analData);
-      }
+      if (analRes.ok) setAnalytics(await analRes.json());
     } catch (error) {
       console.error("Error loading Knowledge Graph:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [startForceSimulation]);
 
   useEffect(() => {
     fetchData();
-  }, []);
-
-  // Helper to generate node positions in a nice layout circle / physics grid
-  const generatePositions = (nodeList: GraphNode[]) => {
-    const coords: Record<string, { x: number; y: number }> = {};
-    const width = 600;
-    const height = 400;
-    const count = nodeList.length;
-
-    nodeList.forEach((node, index) => {
-      // Arrange in a nice circular pattern to start
-      const angle = (index / (count || 1)) * 2 * Math.PI;
-      const radius = 150 + Math.random() * 40;
-      coords[node.id] = {
-        x: width / 2 + radius * Math.cos(angle),
-        y: height / 2 + radius * Math.sin(angle)
-      };
-    });
-    setPositions(coords);
-  };
+    return () => cancelAnimationFrame(simRef.current.raf);
+  }, [fetchData]);
 
   // Seeding initial demo relationships if graph is empty
   const handleSeedGraph = async () => {
@@ -114,13 +232,12 @@ export function GraphDashboard() {
   // Select Node and fetch adjacent relations details
   const handleSelectNode = async (node: GraphNode) => {
     setSelectedNode(node);
-    setImpactAnalysisResult(null); // Clear previous analysis
+    selectedNodeRef.current = node;
+    setImpactAnalysisResult(null);
+    setSimTick(t => t + 1); // trigger React re-render for inspector panel
     try {
       const res = await fetch(`${BACKEND_URL}/api/v1/graph/entity/${node.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setNodeDetails(data);
-      }
+      if (res.ok) setNodeDetails(await res.json());
     } catch (error) {
       console.error("Error fetching node detail:", error);
     }
@@ -159,16 +276,15 @@ export function GraphDashboard() {
         // Add new nodes/edges to display sets
         const existingNodeIds = new Set(nodes.map(n => n.id));
         const newNodes = [...nodes];
-        
+
         (result.nodes || []).forEach((n: GraphNode) => {
           if (!existingNodeIds.has(n.id)) {
             newNodes.push(n);
           }
         });
-        
+
         setNodes(newNodes);
-        generatePositions(newNodes);
-        
+
         const existingEdgeIds = new Set(edges.map(e => e.id));
         const newEdges = [...edges];
         (result.edges || []).forEach((e: GraphEdge) => {
@@ -177,6 +293,7 @@ export function GraphDashboard() {
           }
         });
         setEdges(newEdges);
+        startForceSimulation(newNodes, [...edges, ...newEdges]);
       }
     } catch (err) {
       console.error("Error expanding node connections:", err);
@@ -206,26 +323,31 @@ export function GraphDashboard() {
     }
   };
 
-  // Node position drag simulation
-  const handleDragNode = (nodeId: string, event: React.MouseEvent<SVGCircleElement>) => {
+  // Drag: pin node during drag then release back to sim
+  const handleDragNode = (nodeId: string, event: React.MouseEvent<SVGElement>) => {
     event.preventDefault();
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const initialPos = positions[nodeId] || { x: 300, y: 200 };
+    const pos = simRef.current.positions[nodeId];
+    if (!pos) return;
+    pos.pinned = true;
+    pos.vx = 0; pos.vy = 0;
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      setPositions(prev => ({
-        ...prev,
-        [nodeId]: {
-          x: initialPos.x + dx,
-          y: initialPos.y + dy
-        }
-      }));
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const svgRect = svgEl.getBoundingClientRect();
+    const scaleX = simRef.current.width / svgRect.width;
+    const scaleY = simRef.current.height / svgRect.height;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      pos.x = Math.max(20, Math.min(simRef.current.width - 20, (e.clientX - svgRect.left) * scaleX));
+      pos.y = Math.max(20, Math.min(simRef.current.height - 20, (e.clientY - svgRect.top) * scaleY));
+      const nodeG = svgEl.querySelector(`[data-node-id="${nodeId}"]`) as SVGGElement | null;
+      if (nodeG) nodeG.setAttribute("transform", `translate(${pos.x},${pos.y})`);
     };
 
     const handleMouseUp = () => {
+      pos.pinned = false;
+      // Restart sim briefly to re-settle
+      startForceSimulation(nodes, edges);
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
@@ -447,45 +569,51 @@ export function GraphDashboard() {
                 </button>
               </div>
             ) : (
-              <div className="flex-1 min-h-[400px] w-full border border-darkBorder/30 rounded-lg bg-darkBg/20 relative">
-                <svg width="100%" height="100%" viewBox="0 0 600 400" className="w-full h-full select-none cursor-grab active:cursor-grabbing">
-                  {/* Arrows marker */}
+              <div className="flex-1 min-h-[420px] w-full border border-darkBorder/30 rounded-lg bg-[#05060b] relative" ref={containerRef}>
+                {/* Force-directed SVG canvas — node/edge positions are written directly to DOM by the sim loop */}
+                <svg
+                  ref={svgRef}
+                  width="100%"
+                  height="100%"
+                  viewBox={`0 0 ${simRef.current.width} ${simRef.current.height}`}
+                  className="w-full h-full select-none"
+                >
                   <defs>
-                    <marker id="arrow" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4b5563" />
+                    <marker id="kg-arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151" />
                     </marker>
+                    <filter id="kg-glow">
+                      <feGaussianBlur stdDeviation="2.5" result="blur" />
+                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
                   </defs>
 
-                  {/* Draw edges (lines) */}
-                  {edges.map((edge) => {
-                    const srcPos = positions[edge.source_id] || { x: 300, y: 200 };
-                    const tgtPos = positions[edge.target_id] || { x: 300, y: 200 };
-                    
-                    // Highlight if involved in impact analysis
-                    const isImpacted = impactAnalysisResult && (
-                      impactAnalysisResult.edges?.some((e: any) => e.id === edge.id)
-                    );
-
+                  {/* Edges — positions updated in-place by sim, initial coords don't matter */}
+                  {edges.map(edge => {
+                    const isImpacted = impactAnalysisResult &&
+                      impactAnalysisResult.edges?.some((e: any) => e.id === edge.id);
+                    const spos = simRef.current.positions[edge.source_id];
+                    const tpos = simRef.current.positions[edge.target_id];
                     return (
                       <g key={edge.id}>
                         <line
-                          x1={srcPos.x}
-                          y1={srcPos.y}
-                          x2={tgtPos.x}
-                          y2={tgtPos.y}
-                          stroke={isImpacted ? "#ef4444" : "#4b5563"}
-                          strokeWidth={isImpacted ? 2.5 : 1}
-                          strokeOpacity={isImpacted ? 0.95 : 0.45}
-                          markerEnd="url(#arrow)"
+                          data-edge-id={edge.id}
+                          x1={spos?.x ?? 0} y1={spos?.y ?? 0}
+                          x2={tpos?.x ?? 0} y2={tpos?.y ?? 0}
+                          stroke={isImpacted ? "#ef4444" : "#374151"}
+                          strokeWidth={isImpacted ? 2 : 1}
+                          strokeOpacity={isImpacted ? 0.9 : 0.55}
+                          markerEnd="url(#kg-arrow)"
                         />
-                        {/* Text relationship label */}
                         <text
-                          x={(srcPos.x + tgtPos.x) / 2}
-                          y={(srcPos.y + tgtPos.y) / 2 - 4}
-                          fill={isImpacted ? "#f87171" : "#9ca3af"}
+                          data-edge-lbl={edge.id}
+                          x={spos && tpos ? (spos.x + tpos.x) / 2 : 0}
+                          y={spos && tpos ? (spos.y + tpos.y) / 2 - 4 : 0}
+                          fill={isImpacted ? "#f87171" : "#6b7280"}
                           fontSize="7"
                           fontFamily="monospace"
                           textAnchor="middle"
+                          pointerEvents="none"
                         >
                           {edge.relationship_type}
                         </text>
@@ -493,61 +621,69 @@ export function GraphDashboard() {
                     );
                   })}
 
-                  {/* Draw nodes (circles) */}
-                  {filteredNodes.map((node) => {
-                    const pos = positions[node.id] || { x: 300, y: 200 };
+                  {/* Nodes — rendered at initial position, translated by sim via DOM */}
+                  {filteredNodes.map(node => {
                     const color = getNodeColor(node.entity_type);
                     const isSelected = selectedNode?.id === node.id;
-                    
-                    // Check if node is impacted in simulation
-                    const isImpacted = impactAnalysisResult && (
-                      impactAnalysisResult.impacted_nodes?.some((n: any) => n.id === node.id)
-                    );
-
+                    const isImpacted = impactAnalysisResult &&
+                      impactAnalysisResult.impacted_nodes?.some((n: any) => n.id === node.id);
+                    const spos = simRef.current.positions[node.id];
                     return (
-                      <g key={node.id} className="cursor-pointer">
-                        {/* Pulsing ring if impacted */}
+                      <g
+                        key={node.id}
+                        data-node-id={node.id}
+                        transform={spos ? `translate(${spos.x},${spos.y})` : `translate(${simRef.current.width / 2},${simRef.current.height / 2})`}
+                        className="cursor-pointer"
+                        onMouseDown={e => handleDragNode(node.id, e)}
+                        onClick={() => handleSelectNode(node)}
+                      >
+                        {/* Impact pulse ring */}
                         {isImpacted && (
-                          <circle
-                            cx={pos.x}
-                            cy={pos.y}
-                            r={16}
-                            fill="none"
-                            stroke="#ef4444"
-                            strokeWidth={2}
-                            className="animate-ping opacity-75"
+                          <circle r={18} fill="none" stroke="#ef4444" strokeWidth={2} opacity={0.6}
+                            style={{ animation: "ping 1s cubic-bezier(0,0,0.2,1) infinite" }}
                           />
                         )}
+                        {/* Selection ring */}
+                        {isSelected && (
+                          <circle r={16} fill="none" stroke="#ffffff" strokeWidth={1.5} opacity={0.4}
+                            filter="url(#kg-glow)"
+                          />
+                        )}
+                        {/* Main node circle */}
                         <circle
-                          cx={pos.x}
-                          cy={pos.y}
-                          r={11}
+                          r={isSelected ? 13 : 11}
                           fill={isImpacted ? "#ef4444" : color.fill}
-                          stroke={isSelected ? "#ffffff" : (isImpacted ? "#7f1d1d" : color.stroke)}
+                          stroke={isSelected ? "#ffffff" : color.stroke}
                           strokeWidth={isSelected ? 2.5 : 1.5}
-                          onMouseDown={(e) => handleDragNode(node.id, e)}
-                          onClick={() => handleSelectNode(node)}
+                          filter={isSelected ? "url(#kg-glow)" : undefined}
                         />
-                        {/* Node Label Text */}
+                        {/* Label */}
                         <text
-                          x={pos.x}
-                          y={pos.y + 20}
-                          fill="#f3f4f6"
-                          fontSize="9"
+                          y={isSelected ? 24 : 22}
+                          fill={isSelected ? "#ffffff" : "#d1d5db"}
+                          fontSize={isSelected ? 10 : 9}
                           fontWeight={isSelected ? "bold" : "normal"}
                           fontFamily="sans-serif"
                           textAnchor="middle"
+                          pointerEvents="none"
                         >
-                          {node.name}
+                          {node.name.length > 14 ? node.name.slice(0, 13) + "…" : node.name}
                         </text>
                       </g>
                     );
                   })}
                 </svg>
-                
-                {/* Floating Canvas controls */}
-                <div className="absolute bottom-4 right-4 text-[9px] font-mono text-darkMuted bg-darkBg/75 p-2 border border-darkBorder/40 rounded">
-                  💡 Tip: Click and drag nodes to customize the layout.
+
+                {/* Controls overlay */}
+                <div className="absolute bottom-3 right-3 flex items-center gap-3">
+                  <button
+                    onClick={() => startForceSimulation(nodes, edges)}
+                    className="px-2.5 py-1 text-[9px] font-mono uppercase text-darkMuted border border-darkBorder/60 bg-darkBg/70 hover:text-gray-300 rounded cursor-pointer transition-all flex items-center gap-1"
+                    title="Re-run layout"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> Re-settle
+                  </button>
+                  <span className="text-[9px] font-mono text-darkMuted/60">Drag nodes · Click to inspect</span>
                 </div>
               </div>
             )}

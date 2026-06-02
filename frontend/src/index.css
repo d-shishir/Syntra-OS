@@ -175,4 +175,176 @@ input:checked + .switch-slider:before {
   box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
 }
 
+/* ==========================================
+   UI PRIMITIVES DESIGN SYSTEM STANDARD UTILITIES
+   ========================================== */
+
+/* Button primitives */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  gap: 6px;
+  border: 1px solid transparent;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--color-neonIndigo);
+  color: #ffffff;
+  border-color: rgba(99, 102, 241, 0.2);
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: rgba(99, 102, 241, 0.85);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background-color: rgba(56, 189, 248, 0.08);
+  color: var(--color-neonTeal);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-danger {
+  background-color: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.btn-danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--color-darkMuted);
+}
+.btn-ghost:hover:not(:disabled) {
+  color: #f1f5f9;
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.btn-ghost:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Card components styling */
+.ui-card {
+  position: relative;
+  background: rgba(11, 13, 22, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-darkBorder);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+.ui-card:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.ui-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.15), transparent);
+}
+
+/* Input Fields styling */
+.form-input {
+  background-color: rgba(5, 6, 11, 0.55);
+  border: 1px solid var(--color-darkBorder);
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 8px 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease-in-out;
+  width: 100%;
+}
+.form-input::placeholder {
+  color: var(--color-darkMuted);
+  opacity: 0.7;
+}
+.form-input:focus {
+  border-color: var(--color-neonIndigo);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  background-color: rgba(5, 6, 11, 0.75);
+}
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Table styling system */
+.ui-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-darkBorder);
+  border-radius: 12px;
+  background-color: rgba(11, 13, 22, 0.25);
+}
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.ui-table th {
+  background-color: rgba(11, 13, 22, 0.5);
+  border-bottom: 1px solid var(--color-darkBorder);
+  color: var(--color-darkMuted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 18px;
+}
+.ui-table td {
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(26, 30, 45, 0.4);
+  font-size: 13px;
+  color: #cbd5e1;
+  font-family: var(--font-sans);
+  transition: color 0.15s ease;
+}
+.ui-table tr:last-child td {
+  border-bottom: none;
+}
+.ui-table tr:hover td {
+  color: #ffffff;
+}
+.ui-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+
 

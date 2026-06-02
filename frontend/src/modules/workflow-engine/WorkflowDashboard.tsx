@@ -1,17 +1,66 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { 
-  Play, Plus, CheckCircle2, XCircle, RefreshCw, 
-  Loader2, Sparkles, Send, FileText, 
-  Clock, Database, Mail, ShieldAlert
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import {
+  Play, Plus, CheckCircle2, XCircle, RefreshCw,
+  Loader2, Sparkles, Send, FileText,
+  Clock, Database, Mail, ShieldAlert, Trash2, Settings, Zap, X
 } from "lucide-react";
+import {
+  ReactFlow,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  Controls,
+  Background,
+  BackgroundVariant,
+  type Connection,
+  type Node,
+  type Edge,
+  MiniMap,
+  Panel,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
-interface Workflow {
-  id: string;
-  name: string;
-  description: string;
-  steps: string[];
-  created_at: string;
+const STEP_TYPES = [
+  { name: "extract_document", label: "Extract Document", desc: "Structured Invoice/Payroll Schema Parsing", icon: FileText, color: "#6366f1" },
+  { name: "detect_anomalies", label: "Detect Anomalies", desc: "Compliance Auditing & Fraud Verification", icon: ShieldAlert, color: "#ef4444" },
+  { name: "summarize_document", label: "Summarize", desc: "AI Document Digest Summarization", icon: Clock, color: "#38bdf8" },
+  { name: "search_vector_db", label: "Vector Search", desc: "RAG Semantic Context Querying", icon: Database, color: "#10b981" },
+  { name: "send_email", label: "Send Email", desc: "Mock Notification Alert Relay", icon: Mail, color: "#f59e0b" },
+  { name: "generate_report", label: "Generate Report", desc: "Findings Document Assembly", icon: FileText, color: "#a855f7" },
+  { name: "run_agent", label: "Run Agent", desc: "Dispatch AI Sub-Agent Task", icon: Zap, color: "#06b6d4" },
+];
+
+// Custom Node renderer for the canvas
+function WorkflowStepNode({ data, selected }: { data: any; selected?: boolean }) {
+  const stepType = STEP_TYPES.find(s => s.name === data.stepType) || STEP_TYPES[0];
+  const Icon = stepType.icon;
+  return (
+    <div
+      className={`rounded-xl border-2 bg-[#0b0d16] shadow-xl transition-all w-[180px] ${
+        selected ? "border-[#6366f1] shadow-[0_0_16px_rgba(99,102,241,0.35)]" : "border-[#1a1e2d]"
+      }`}
+    >
+      {/* Node header */}
+      <div className="px-3 py-2 flex items-center gap-2 border-b border-[#1a1e2d]" style={{ borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>
+        <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ background: `${stepType.color}22` }}>
+          <Icon className="w-3 h-3" style={{ color: stepType.color }} />
+        </div>
+        <span className="text-[11px] font-bold text-gray-200 truncate">{data.label}</span>
+      </div>
+      {/* Node body */}
+      <div className="px-3 py-2">
+        <p className="text-[9px] text-[#717d96] leading-normal">{stepType.desc}</p>
+        {data.retries > 0 && (
+          <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] text-amber-400">
+            <RefreshCw className="w-2.5 h-2.5" /> {data.retries} retries
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
+
+const nodeTypes = { workflowStep: WorkflowStepNode };
 
 interface StepLog {
   id: string;
@@ -20,7 +69,6 @@ interface StepLog {
   execution_time_ms: number;
   retry_count: number;
   error?: string;
-  input_data?: unknown;
   output_data?: unknown;
   created_at: string;
 }
@@ -38,6 +86,14 @@ interface WorkflowRun {
   steps?: StepLog[];
 }
 
+interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  steps: string[];
+  created_at: string;
+}
+
 interface DocumentInfo {
   id: string;
   filename: string;
@@ -48,628 +104,622 @@ interface WorkflowDashboardProps {
   backendUrl: string;
 }
 
+let nodeIdCounter = 100;
+const nextNodeId = () => `wf-node-${++nodeIdCounter}`;
+
 export function WorkflowDashboard({ backendUrl }: WorkflowDashboardProps) {
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
-  
-  // Forms & State
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newWorkflowName, setNewWorkflowName] = useState("");
-  const [newWorkflowDesc, setNewWorkflowDesc] = useState("");
-  const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
-  
-  const [goalPrompt, setGoalPrompt] = useState("");
-  const [planningAndRunning, setPlanningAndRunning] = useState(false);
-  const [selectedRunDocId, setSelectedRunDocId] = useState("");
-  
   const [loading, setLoading] = useState(true);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
-  const [customInputContext, setCustomInputContext] = useState<string>("{\n  \"document_id\": \"\"\n}");
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
 
-  const handleSelectDocumentForCustomRun = (docId: string) => {
-    setCustomInputContext(JSON.stringify({ document_id: docId }, null, 2));
-  };
+  // Active view: 'builder' | 'planner' | 'history'
+  const [view, setView] = useState<"builder" | "planner" | "history">("builder");
 
-  const availableSteps = [
-    { name: "extract_document", desc: "Structured Invoice/Payroll Schema Parsing", icon: FileText },
-    { name: "detect_anomalies", desc: "Compliance Auditing & Fraud Verification", icon: ShieldAlert },
-    { name: "summarize_document", desc: "AI Document Digest Summarization", icon: Clock },
-    { name: "search_vector_db", desc: "RAG Semantic Context Querying", icon: Database },
-    { name: "send_email", desc: "Mock Notification Alert Relay", icon: Mail },
-    { name: "generate_report", desc: "Findings Document Assembly", icon: FileText }
-  ];
+  // React Flow canvas state
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  const fetchWorkflows = useCallback(async () => {
-    try {
-      const res = await fetch(`${backendUrl}/api/v1/workflows`);
-      if (res.ok) {
-        const data = await res.json();
-        setWorkflows(data);
-      }
-    } catch (e) {
-      console.error("Error loading workflows", e);
-    }
-  }, [backendUrl]);
+  // Builder workflow metadata
+  const [builderName, setBuilderName] = useState("Untitled Workflow");
+  const [builderDesc, setBuilderDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Planner
+  const [goalPrompt, setGoalPrompt] = useState("");
+  const [selectedRunDocId, setSelectedRunDocId] = useState("");
+  const [planningAndRunning, setPlanningAndRunning] = useState(false);
+
+  // History inspector
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   const fetchRuns = useCallback(async () => {
     try {
       const res = await fetch(`${backendUrl}/api/v1/workflows/runs`);
-      if (res.ok) {
-        const data = await res.json();
-        setRuns(data);
-      }
-    } catch (e) {
-      console.error("Error loading workflow runs", e);
-    }
+      if (res.ok) setRuns(await res.json());
+    } catch (e) { console.error(e); }
   }, [backendUrl]);
 
   const fetchRunDetails = useCallback(async (runId: string) => {
     try {
       const res = await fetch(`${backendUrl}/api/v1/workflows/runs/${runId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedRun(data);
-      }
-    } catch (e) {
-      console.error("Error loading run details", e);
-    }
+      if (res.ok) setSelectedRun(await res.json());
+    } catch (e) { console.error(e); }
+  }, [backendUrl]);
+
+  const fetchWorkflows = useCallback(async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/v1/workflows`);
+      if (res.ok) setWorkflows(await res.json());
+    } catch (e) { console.error(e); }
   }, [backendUrl]);
 
   const fetchDocuments = useCallback(async () => {
     try {
       const res = await fetch(`${backendUrl}/documents`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
-      }
-    } catch (e) {
-      console.error("Error loading documents", e);
-    }
+      if (res.ok) setDocuments(await res.json());
+    } catch (e) { console.error(e); }
   }, [backendUrl]);
 
   useEffect(() => {
-    let active = true;
-    const run = async () => {
-      await Promise.resolve();
-      if (active) {
-        setLoading(true);
-        Promise.all([fetchWorkflows(), fetchRuns(), fetchDocuments()]).finally(() => {
-          if (active) setLoading(false);
-        });
-      }
-    };
-    run();
-    return () => {
-      active = false;
-    };
-  }, [fetchWorkflows, fetchRuns, fetchDocuments]);
+    Promise.all([fetchRuns(), fetchDocuments(), fetchWorkflows()]).finally(() => setLoading(false));
+  }, [fetchRuns, fetchDocuments, fetchWorkflows]);
 
-  // Poll active runs if any are running
+  // Poll running executions
   useEffect(() => {
     const hasRunning = runs.some(r => r.status === "running");
     if (!hasRunning) return;
-
     const timer = setInterval(() => {
       fetchRuns();
-      if (selectedRun && selectedRun.status === "running") {
-        fetchRunDetails(selectedRun.id);
-      }
+      if (selectedRun?.status === "running") fetchRunDetails(selectedRun.id);
     }, 2000);
-
     return () => clearInterval(timer);
   }, [runs, selectedRun, fetchRuns, fetchRunDetails]);
 
-  const handleCreateWorkflow = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newWorkflowName.trim() || selectedSteps.length === 0) return;
+  // ── Canvas helpers ──────────────────────────────────────────
+  const onConnect = useCallback(
+    (params: Connection) => setEdges(eds => addEdge({ ...params, animated: true, style: { stroke: "#6366f1", strokeWidth: 1.5 } }, eds)),
+    [setEdges]
+  );
+
+  const addStepToCanvas = (stepType: typeof STEP_TYPES[0]) => {
+    const id = nextNodeId();
+    const col = nodes.length % 4;
+    const row = Math.floor(nodes.length / 4);
+    const newNode: Node = {
+      id,
+      type: "workflowStep",
+      position: { x: 60 + col * 220, y: 60 + row * 120 },
+      data: { label: stepType.label, stepType: stepType.name, retries: 0 },
+    };
+    setNodes(nds => [...nds, newNode]);
+    setSelectedNode(newNode);
+  };
+
+  const deleteSelectedNode = () => {
+    if (!selectedNode) return;
+    setNodes(nds => nds.filter(n => n.id !== selectedNode.id));
+    setEdges(eds => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id));
+    setSelectedNode(null);
+  };
+
+  const updateSelectedNodeLabel = (label: string) => {
+    setNodes(nds => nds.map(n => n.id === selectedNode?.id ? { ...n, data: { ...n.data, label } } : n));
+    setSelectedNode(prev => prev ? { ...prev, data: { ...prev.data, label } } : prev);
+  };
+
+  const updateSelectedNodeRetries = (retries: number) => {
+    setNodes(nds => nds.map(n => n.id === selectedNode?.id ? { ...n, data: { ...n.data, retries } } : n));
+    setSelectedNode(prev => prev ? { ...prev, data: { ...prev.data, retries } } : prev);
+  };
+
+  const clearCanvas = () => {
+    setNodes([]);
+    setEdges([]);
+    setSelectedNode(null);
+  };
+
+  // Save the visual canvas as a workflow definition
+  const handleSaveCanvasWorkflow = async () => {
+    if (nodes.length === 0 || !builderName.trim()) return;
+    setSaving(true);
+    setSaveSuccess(false);
+    // Derive ordered steps by following the edge chain (simple topological sort)
+    const orderedSteps: string[] = [];
+    const visited = new Set<string>();
+    const adjacency: Record<string, string[]> = {};
+    const inDegree: Record<string, number> = {};
+    nodes.forEach(n => { adjacency[n.id] = []; inDegree[n.id] = 0; });
+    edges.forEach(e => {
+      adjacency[e.source]?.push(e.target);
+      inDegree[e.target] = (inDegree[e.target] || 0) + 1;
+    });
+    const queue = nodes.filter(n => (inDegree[n.id] || 0) === 0).map(n => n.id);
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const node = nodes.find(n => n.id === cur);
+      if (node) orderedSteps.push(node.data.stepType as string);
+      (adjacency[cur] || []).forEach(next => queue.push(next));
+    }
+    // Fallback: unconnected nodes appended at end
+    nodes.forEach(n => { if (!visited.has(n.id)) orderedSteps.push(n.data.stepType as string); });
 
     try {
       const res = await fetch(`${backendUrl}/api/v1/workflows/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newWorkflowName,
-          description: newWorkflowDesc,
-          steps: selectedSteps
-        })
+        body: JSON.stringify({ name: builderName, description: builderDesc, steps: orderedSteps }),
       });
-
       if (res.ok) {
+        setSaveSuccess(true);
         fetchWorkflows();
-        setShowCreateModal(false);
-        setNewWorkflowName("");
-        setNewWorkflowDesc("");
-        setSelectedSteps([]);
+        setTimeout(() => setSaveSuccess(false), 3000);
       }
-    } catch (e) {
-      console.error("Failed to create workflow", e);
-    }
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   };
 
+  // Execute a workflow from the library
   const handleRunWorkflow = async (workflowId: string) => {
-    let parsedInput: Record<string, unknown>;
-    try {
-      parsedInput = JSON.parse(customInputContext) as Record<string, unknown>;
-    } catch {
-      alert("Invalid JSON configuration in context input.");
-      return;
-    }
-
     try {
       const res = await fetch(`${backendUrl}/api/v1/workflows/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workflow_id: workflowId,
-          input_context: parsedInput
-        })
+        body: JSON.stringify({ workflow_id: workflowId, input_context: {} }),
       });
-
       if (res.ok) {
-        const runData = await res.json();
         fetchRuns();
-        setSelectedRun(runData);
+        setView("history");
+        setSelectedRun(await res.json());
       }
-    } catch (e) {
-      console.error("Failed to execute workflow", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const handlePlanAndRun = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goalPrompt.trim()) return;
-
     setPlanningAndRunning(true);
-    const inputContext: Record<string, unknown> = {};
-    if (selectedRunDocId.trim()) {
-      inputContext["document_id"] = selectedRunDocId.trim();
-    }
-
     try {
       const res = await fetch(`${backendUrl}/api/v1/workflows/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_goal: goalPrompt,
-          input_context: inputContext
-        })
+          input_context: selectedRunDocId ? { document_id: selectedRunDocId } : {},
+        }),
       });
-
       if (res.ok) {
-        const runData = await res.json();
         setGoalPrompt("");
         fetchWorkflows();
         fetchRuns();
-        setSelectedRun(runData);
+        setSelectedRun(await res.json());
+        setView("history");
       }
-    } catch (e) {
-      console.error("Failed planning workflow", e);
-    } finally {
-      setPlanningAndRunning(false);
-    }
-  };
-
-  const toggleStep = (stepName: string) => {
-    if (selectedSteps.includes(stepName)) {
-      setSelectedSteps(prev => prev.filter(s => s !== stepName));
-    } else {
-      setSelectedSteps(prev => [...prev, stepName]);
-    }
+    } catch (e) { console.error(e); }
+    finally { setPlanningAndRunning(false); }
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Overview Heading */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="flex flex-col h-[calc(100vh-140px)] space-y-4 animate-fadeIn">
+
+      {/* ── Top Bar ──────────────────────────────────── */}
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-200 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-neonTeal" />
-            Workflow & Agent Orchestration
+            Workflow Orchestration Studio
           </h2>
-          <p className="text-xs text-darkMuted mt-0.5">
-            Orchestrate multi-step task chains, model tool execution, and track reliability metrics.
-          </p>
+          <p className="text-xs text-darkMuted mt-0.5">Design, plan, and monitor multi-step automation pipelines.</p>
         </div>
-        
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-neonTeal hover:bg-neonTeal/85 rounded-lg shadow-lg shadow-neonTeal/10 transition-all cursor-pointer self-start"
-        >
-          <Plus className="w-4 h-4" />
-          Define Custom Workflow
-        </button>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 bg-darkBg/60 border border-darkBorder rounded-xl p-1">
+          {(["builder", "planner", "history"] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-all capitalize ${
+                view === v
+                  ? "bg-neonIndigo/15 text-neonIndigo border border-neonIndigo/25"
+                  : "text-darkMuted hover:text-gray-200"
+              }`}
+            >
+              {v === "builder" ? "Visual Builder" : v === "planner" ? "AI Planner" : "Run History"}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Grid split: Workflows / Goal Planner (Left) and Run Details Graph (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left pane: Definition & Execution Tools */}
-        <div className="lg:col-span-1 space-y-6">
-          
-          {/* AI Task Planner console */}
-          <div className="p-5 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-4">
-            <div>
-              <h3 className="text-xs font-bold text-neonTeal uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                AI Agent Task Planner
-              </h3>
-              <p className="text-[10px] text-darkMuted mt-0.5">Translate natural goal statements into structured chained actions</p>
+      {/* ══ VIEW: Visual Builder ══════════════════════ */}
+      {view === "builder" && (
+        <div className="flex gap-4 flex-1 min-h-0">
+
+          {/* Left: step palette */}
+          <div className="w-56 shrink-0 space-y-3 overflow-y-auto">
+            <div className="bg-darkPanel/30 border border-darkBorder rounded-xl p-4 space-y-3">
+              <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-darkMuted">Step Palette</h3>
+              <p className="text-[10px] text-darkMuted/70 leading-normal">Click any step to add it to the canvas. Drag to rearrange.</p>
+              <div className="space-y-1.5">
+                {STEP_TYPES.map(step => {
+                  const Icon = step.icon;
+                  return (
+                    <button
+                      key={step.name}
+                      onClick={() => addStepToCanvas(step)}
+                      className="w-full flex items-center gap-2.5 p-2.5 rounded-lg border border-darkBorder bg-darkBg/30 hover:border-darkBorder/100 hover:bg-darkBg/70 text-left cursor-pointer transition-all group"
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border" style={{ background: `${step.color}18`, borderColor: `${step.color}40` }}>
+                        <Icon className="w-3.5 h-3.5" style={{ color: step.color }} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-gray-300 group-hover:text-white truncate">{step.label}</p>
+                        <p className="text-[9px] text-darkMuted truncate">{step.desc}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <form onSubmit={handlePlanAndRun} className="space-y-3">
+            {/* Workflow metadata */}
+            <div className="bg-darkPanel/30 border border-darkBorder rounded-xl p-4 space-y-3">
+              <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-darkMuted">Workflow Info</h3>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={builderName}
+                  onChange={e => setBuilderName(e.target.value)}
+                  placeholder="Workflow name…"
+                  className="w-full form-input text-xs"
+                />
+                <textarea
+                  value={builderDesc}
+                  onChange={e => setBuilderDesc(e.target.value)}
+                  placeholder="Description (optional)…"
+                  rows={2}
+                  className="w-full form-input text-xs resize-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveCanvasWorkflow}
+                  disabled={saving || nodes.length === 0}
+                  className="flex-1 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-lg cursor-pointer transition-all btn btn-primary disabled:opacity-40"
+                >
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saveSuccess ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                  {saving ? "Saving…" : saveSuccess ? "Saved!" : "Save"}
+                </button>
+                <button
+                  onClick={clearCanvas}
+                  className="p-2 rounded-lg border border-darkBorder text-darkMuted hover:text-rose-400 hover:border-rose-500/40 cursor-pointer transition-all"
+                  title="Clear canvas"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Center: React Flow Canvas */}
+          <div className="flex-1 min-h-0 rounded-xl border border-darkBorder overflow-hidden bg-[#05060b] relative" ref={reactFlowWrapper}>
+            {nodes.length === 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10 space-y-3">
+                <div className="w-16 h-16 rounded-2xl bg-neonIndigo/5 border border-neonIndigo/10 flex items-center justify-center">
+                  <Sparkles className="w-7 h-7 text-neonIndigo/40" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-500">Empty Canvas</p>
+                  <p className="text-xs text-darkMuted mt-1 max-w-xs">Click steps from the palette on the left to begin building your workflow pipeline.</p>
+                </div>
+              </div>
+            )}
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={nodeTypes}
+              onNodeClick={(_, node) => setSelectedNode(node)}
+              onPaneClick={() => setSelectedNode(null)}
+              fitView
+              colorMode="dark"
+              defaultEdgeOptions={{ animated: true, style: { stroke: "#6366f1", strokeWidth: 1.5 } }}
+              style={{ background: "transparent" }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1a1e2d" />
+              <Controls className="!bottom-4 !left-4 !top-auto" />
+              <MiniMap
+                style={{ background: "#0b0d16", border: "1px solid #1a1e2d" }}
+                nodeColor={() => "#6366f1"}
+                maskColor="rgba(5,6,11,0.7)"
+              />
+              {nodes.length > 0 && (
+                <Panel position="top-right">
+                  <div className="text-[9px] font-mono text-darkMuted bg-darkBg/80 px-2 py-1 rounded border border-darkBorder">
+                    {nodes.length} nodes · {edges.length} connections
+                  </div>
+                </Panel>
+              )}
+            </ReactFlow>
+          </div>
+
+          {/* Right: Node inspector */}
+          <div className="w-56 shrink-0">
+            <div className="bg-darkPanel/30 border border-darkBorder rounded-xl p-4 space-y-4 h-full">
+              <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-darkMuted flex items-center gap-1.5">
+                <Settings className="w-3.5 h-3.5" /> Node Inspector
+              </h3>
+              {selectedNode ? (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono uppercase text-darkMuted">Display Label</label>
+                    <input
+                      type="text"
+                      value={selectedNode.data.label as string}
+                      onChange={e => updateSelectedNodeLabel(e.target.value)}
+                      className="w-full form-input text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono uppercase text-darkMuted">Max Retries</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      value={selectedNode.data.retries as number}
+                      onChange={e => updateSelectedNodeRetries(Number(e.target.value))}
+                      className="w-full form-input text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono uppercase text-darkMuted">Step Type</label>
+                    <div className="text-[10px] font-mono text-neonIndigo bg-neonIndigo/5 border border-neonIndigo/20 px-2 py-1 rounded">
+                      {selectedNode.data.stepType as string}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono uppercase text-darkMuted">Node ID</label>
+                    <div className="text-[9px] font-mono text-darkMuted truncate">{selectedNode.id}</div>
+                  </div>
+                  <button
+                    onClick={deleteSelectedNode}
+                    className="w-full py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-lg cursor-pointer transition-all btn btn-danger"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Node
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-40 text-center text-darkMuted space-y-2">
+                  <Settings className="w-8 h-8 text-darkBorder" />
+                  <p className="text-xs">Click a node on the canvas to inspect and configure it.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ VIEW: AI Planner ══════════════════════════ */}
+      {view === "planner" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1">
+          <div className="space-y-6">
+            <div className="p-5 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-darkMuted uppercase mb-1">
-                  Task Goal
-                </label>
+                <h3 className="text-xs font-bold text-neonTeal uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> AI Agent Task Planner
+                </h3>
+                <p className="text-[10px] text-darkMuted mt-0.5">Translate natural goal statements into structured chained actions</p>
+              </div>
+              <form onSubmit={handlePlanAndRun} className="space-y-3">
                 <textarea
                   placeholder="e.g. Ingest new document, summarize findings, check for compliance anomalies, and notify team."
                   value={goalPrompt}
-                  onChange={(e) => setGoalPrompt(e.target.value)}
-                  className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal rounded-lg px-3 py-2 text-xs text-gray-200 placeholder:text-darkMuted outline-none min-h-[70px] resize-none transition-all"
+                  onChange={e => setGoalPrompt(e.target.value)}
+                  className="w-full form-input text-xs min-h-[80px] resize-none"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-darkMuted uppercase mb-1">
-                  Document Context (Optional)
-                </label>
                 <select
                   value={selectedRunDocId}
-                  onChange={(e) => setSelectedRunDocId(e.target.value)}
-                  className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal rounded-lg px-3 py-2 text-xs text-gray-200 outline-none transition-all cursor-pointer"
+                  onChange={e => setSelectedRunDocId(e.target.value)}
+                  className="w-full form-input text-xs cursor-pointer"
                 >
                   <option value="">-- No document context --</option>
-                  {documents.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      {doc.filename} ({doc.document_type || "generic"})
-                    </option>
+                  {documents.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.filename} ({doc.document_type || "generic"})</option>
                   ))}
                 </select>
-              </div>
+                <button
+                  type="submit"
+                  disabled={planningAndRunning || !goalPrompt.trim()}
+                  className="w-full py-2.5 text-xs font-mono font-bold uppercase tracking-wider text-white bg-neonIndigo hover:bg-neonIndigo/85 disabled:bg-neonIndigo/50 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  {planningAndRunning ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Planning Chain…</> : <><Send className="w-3.5 h-3.5" />Plan & Execute</>}
+                </button>
+              </form>
+            </div>
 
-              <button
-                type="submit"
-                disabled={planningAndRunning || !goalPrompt.trim()}
-                className="w-full py-2.5 text-xs font-mono font-bold uppercase tracking-wider text-white bg-neonIndigo hover:bg-neonIndigo/85 disabled:bg-neonIndigo/50 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                {planningAndRunning ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Planning Chain...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    Plan & Execute Workflow
-                  </>
-                )}
-              </button>
-            </form>
+            {/* Saved Workflow Library */}
+            <div className="p-5 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-3">
+              <h3 className="text-xs font-bold text-darkMuted uppercase tracking-wider">Workflow Library</h3>
+              {loading ? (
+                <div className="py-6 flex justify-center"><Loader2 className="w-6 h-6 text-neonTeal animate-spin" /></div>
+              ) : workflows.length === 0 ? (
+                <p className="text-xs text-darkMuted italic text-center py-4">No workflows saved yet. Build one in the Visual Builder tab.</p>
+              ) : (
+                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                  {workflows.map(wf => (
+                    <div key={wf.id} className="p-3 bg-darkBg/40 border border-darkBorder rounded-lg flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-xs text-gray-200 truncate">{wf.name}</p>
+                        <p className="text-[9px] font-mono text-darkMuted mt-0.5">[{wf.steps.length} steps]</p>
+                      </div>
+                      <button
+                        onClick={() => handleRunWorkflow(wf.id)}
+                        className="shrink-0 px-2.5 py-1 text-[9px] font-mono font-bold uppercase text-neonTeal border border-neonTeal/30 bg-neonTeal/5 hover:bg-neonTeal/15 rounded cursor-pointer transition-all"
+                      >
+                        Run
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Workflow definitions list */}
-          <div className="p-5 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-4">
-            <h3 className="text-xs font-bold text-darkMuted uppercase tracking-wider">
-              Workflow Library
-            </h3>
-
-            {loading ? (
-              <div className="py-6 flex justify-center"><Loader2 className="w-6 h-6 text-neonTeal animate-spin" /></div>
-            ) : workflows.length === 0 ? (
-              <p className="text-xs text-darkMuted italic text-center py-4">No custom workflows defined yet.</p>
-            ) : (
-              <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
-                {workflows.map(wf => (
-                  <div
-                    key={wf.id}
-                    className={`p-3 bg-darkBg/40 border rounded-lg transition-colors flex flex-col justify-between gap-2.5 ${
-                      selectedWorkflowId === wf.id ? "border-neonTeal bg-darkBg/65" : "border-darkBorder"
-                    }`}
-                  >
-                    <div onClick={() => setSelectedWorkflowId(wf.id === selectedWorkflowId ? null : wf.id)} className="cursor-pointer">
-                      <div className="flex justify-between items-start">
-                        <span className="font-semibold text-xs text-gray-200 hover:text-neonTeal transition-colors">{wf.name}</span>
-                        <span className="text-[9px] font-mono text-darkMuted">[{wf.steps.length} steps]</span>
-                      </div>
-                      <p className="text-[10px] text-darkMuted mt-0.5 truncate">{wf.description || "No description"}</p>
+          {/* Right: animated steps preview */}
+          <div className="p-6 bg-darkPanel/25 border border-darkBorder rounded-xl flex flex-col items-center justify-center text-center">
+            {planningAndRunning ? (
+              <div className="space-y-4 w-full max-w-sm">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="w-5 h-5 text-neonIndigo animate-spin" />
+                  <span className="text-xs font-mono text-gray-300">Executing autonomous reasoning loop…</span>
+                </div>
+                <div className="border-l border-darkBorder/60 ml-2.5 pl-5 space-y-4 text-xs font-mono text-left">
+                  {["Generating sub-task plan", "Compiling search & RAG evidence", "Synthesizing correlations", "Drafting pipeline definition"].map((step, i) => (
+                    <div key={i} className="relative flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-neonIndigo rounded-full absolute -left-[23px] top-1" />
+                      <span className="text-gray-300">{step}</span>
+                      <Loader2 className="w-3 h-3 animate-spin text-neonIndigo" />
                     </div>
-
-                    {selectedWorkflowId === wf.id && (
-                      <div className="space-y-3 pt-2 border-t border-darkBorder/30 animate-fadeIn">
-                        <div>
-                          <label className="block text-[8px] font-mono uppercase text-darkMuted mb-1">
-                            Select Document context
-                          </label>
-                          <select
-                            onChange={(e) => handleSelectDocumentForCustomRun(e.target.value)}
-                            className="w-full bg-darkBg/80 border border-darkBorder focus:border-neonTeal rounded p-1 text-[10px] text-gray-300 outline-none cursor-pointer mb-2"
-                          >
-                            <option value="">-- Choose Document --</option>
-                            {documents.map((doc) => (
-                              <option key={doc.id} value={doc.id}>
-                                {doc.filename}
-                              </option>
-                            ))}
-                          </select>
-
-                          <label className="block text-[8px] font-mono uppercase text-darkMuted mb-1">
-                            Execution Parameters (JSON Context)
-                          </label>
-                          <textarea
-                            value={customInputContext}
-                            onChange={(e) => setCustomInputContext(e.target.value)}
-                            className="w-full bg-darkBg/80 border border-darkBorder focus:border-neonTeal rounded p-1.5 text-[9px] font-mono text-gray-300 outline-none min-h-[55px] resize-none"
-                          />
-                        </div>
-                        <button
-                          onClick={() => handleRunWorkflow(wf.id)}
-                          className="w-full py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-darkBg bg-neonTeal hover:bg-neonTeal/85 rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
-                        >
-                          <Play className="w-3 h-3 fill-current" />
-                          Execute Run
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 text-darkMuted">
+                <Sparkles className="w-12 h-12 text-darkBorder mx-auto" />
+                <p className="text-sm font-semibold text-gray-400">AI Planner Ready</p>
+                <p className="text-xs max-w-xs">Describe a business goal on the left and the AI will plan and execute a structured workflow automatically.</p>
               </div>
             )}
           </div>
+        </div>
+      )}
 
-          {/* Workflow Run History */}
-          <div className="p-5 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-4">
-            <h3 className="text-xs font-bold text-darkMuted uppercase tracking-wider">
-              Execution Run History
-            </h3>
+      {/* ══ VIEW: Run History ══════════════════════════ */}
+      {view === "history" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
 
+          {/* Run list */}
+          <div className="lg:col-span-1 space-y-3 overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-darkMuted uppercase tracking-wider">Execution Log</h3>
+              <button onClick={fetchRuns} className="p-1.5 rounded-lg border border-darkBorder text-darkMuted hover:text-gray-300 cursor-pointer transition-all">
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
             {loading ? (
               <div className="py-6 flex justify-center"><Loader2 className="w-6 h-6 text-neonTeal animate-spin" /></div>
             ) : runs.length === 0 ? (
-              <p className="text-xs text-darkMuted italic text-center py-4">No executions logged.</p>
+              <p className="text-xs text-darkMuted italic text-center py-4">No executions logged yet.</p>
             ) : (
-              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                {runs.map(r => (
-                  <div
-                    key={r.id}
-                    onClick={() => fetchRunDetails(r.id)}
-                    className={`p-3 bg-darkBg/40 border hover:border-darkBorder/100 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-3 ${
-                      selectedRun && selectedRun.id === r.id ? "border-neonIndigo bg-darkBg/65" : "border-darkBorder"
-                    }`}
-                  >
-                    <div className="truncate">
-                      <p className="font-semibold text-xs text-gray-200 truncate">{r.workflow_name}</p>
-                      <p className="text-[9px] font-mono text-darkMuted mt-0.5 truncate">{r.id.split("-")[0]}... | {new Date(r.started_at).toLocaleTimeString()}</p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-1">
-                      {r.status === "success" && <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400" />}
-                      {r.status === "failed" && <XCircle className="w-4.5 h-4.5 text-rose-500" />}
-                      {r.status === "running" && <Loader2 className="w-4.5 h-4.5 text-neonTeal animate-spin" />}
-                      {r.status === "pending" && <Clock className="w-4.5 h-4.5 text-darkMuted" />}
-                    </div>
+              runs.map(r => (
+                <div
+                  key={r.id}
+                  onClick={() => fetchRunDetails(r.id)}
+                  className={`p-3 bg-darkBg/40 border hover:border-darkBorder/100 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-3 ${
+                    selectedRun?.id === r.id ? "border-neonIndigo bg-darkBg/65" : "border-darkBorder"
+                  }`}
+                >
+                  <div className="truncate">
+                    <p className="font-semibold text-xs text-gray-200 truncate">{r.workflow_name}</p>
+                    <p className="text-[9px] font-mono text-darkMuted mt-0.5">{r.id.slice(0, 8)}… · {new Date(r.started_at).toLocaleTimeString()}</p>
                   </div>
-                ))}
-              </div>
+                  <div className="shrink-0">
+                    {r.status === "success" && <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400" />}
+                    {r.status === "failed" && <XCircle className="w-4.5 h-4.5 text-rose-500" />}
+                    {r.status === "running" && <Loader2 className="w-4.5 h-4.5 text-neonTeal animate-spin" />}
+                    {r.status === "pending" && <Clock className="w-4.5 h-4.5 text-darkMuted" />}
+                  </div>
+                </div>
+              ))
             )}
           </div>
 
-        </div>
-
-        {/* Right pane: Visual Execution Flow & Step Details */}
-        <div className="lg:col-span-2 space-y-6">
-          {selectedRun ? (
-            <div className="p-6 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-6 select-text animate-fadeIn">
-              
-              {/* Run overview header */}
-              <div className="flex justify-between items-start gap-4 border-b border-darkBorder/50 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-gray-200 text-sm">{selectedRun.workflow_name}</h3>
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono uppercase font-bold border ${
-                      selectedRun.status === "success"
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        : selectedRun.status === "failed"
-                        ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+          {/* Run detail / step graph */}
+          <div className="lg:col-span-2">
+            {selectedRun ? (
+              <div className="p-6 bg-darkPanel/25 border border-darkBorder rounded-xl space-y-6 select-text animate-fadeIn h-full overflow-y-auto">
+                <div className="flex justify-between items-start gap-4 border-b border-darkBorder/50 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-gray-200 text-sm">{selectedRun.workflow_name}</h3>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono uppercase font-bold border ${
+                        selectedRun.status === "success" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : selectedRun.status === "failed" ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
                         : "bg-neonTeal/10 text-neonTeal border-neonTeal/20 animate-pulse"
-                    }`}>
-                      {selectedRun.status}
-                    </span>
+                      }`}>{selectedRun.status}</span>
+                    </div>
+                    <p className="text-[10px] text-darkMuted font-mono mt-1">Run UUID: {selectedRun.id}</p>
                   </div>
-                  <p className="text-[10px] text-darkMuted font-mono mt-1">Run UUID: {selectedRun.id}</p>
+                  <div className="text-right text-[10px] text-darkMuted space-y-0.5">
+                    <p>Started: {new Date(selectedRun.started_at).toLocaleString()}</p>
+                    {selectedRun.completed_at && <p>Duration: {Math.max(0, new Date(selectedRun.completed_at).getTime() - new Date(selectedRun.started_at).getTime())} ms</p>}
+                  </div>
                 </div>
 
-                <div className="text-right text-[10px] text-darkMuted space-y-0.5">
-                  <p>Started: {new Date(selectedRun.started_at).toLocaleString()}</p>
-                  {selectedRun.completed_at && (
-                    <p>Duration: {Math.max(0, Math.round((new Date(selectedRun.completed_at).getTime() - new Date(selectedRun.started_at).getTime())))} ms</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Visual graph / node flow */}
-              <div>
-                <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-4">
-                  Visual Execution Graph (Pipeline View)
-                </span>
-                
-                {/* Visual pipeline layout */}
-                <div className="flex flex-col space-y-6 relative pl-6">
-                  {/* Vertical connector line */}
-                  <div className="absolute left-[33px] top-4 bottom-4 w-0.5 bg-darkBorder/60" />
-
-                  {selectedRun.steps && selectedRun.steps.map((step) => {
-                    const isSuccess = step.status === "success";
-                    const isFailed = step.status === "failed";
-                    const isRetried = step.retry_count > 0;
-                    
-                    return (
+                {/* Visual step pipeline */}
+                <div>
+                  <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-4">Pipeline Execution Graph</span>
+                  <div className="flex flex-col space-y-5 relative pl-6">
+                    <div className="absolute left-[33px] top-4 bottom-4 w-0.5 bg-darkBorder/60" />
+                    {selectedRun.steps?.map(step => (
                       <div key={step.id} className="relative flex gap-4 items-start animate-fadeIn">
-                        {/* Node bubble */}
                         <div className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center border transition-all ${
-                          isSuccess
-                            ? "bg-emerald-950/20 border-emerald-500 text-emerald-400"
-                            : isFailed
-                            ? "bg-rose-950/20 border-rose-500 text-rose-400"
-                            : "bg-darkPanel border-neonTeal text-neonTeal animate-pulse"
+                          step.status === "success" ? "bg-emerald-950/20 border-emerald-500 text-emerald-400"
+                          : step.status === "failed" ? "bg-rose-950/20 border-rose-500 text-rose-400"
+                          : "bg-darkPanel border-neonTeal text-neonTeal animate-pulse"
                         }`}>
-                          {isSuccess && <CheckCircle2 className="w-4 h-4" />}
-                          {isFailed && <XCircle className="w-4 h-4" />}
-                          {!isSuccess && !isFailed && <Loader2 className="w-4 h-4 animate-spin" />}
+                          {step.status === "success" && <CheckCircle2 className="w-4 h-4" />}
+                          {step.status === "failed" && <XCircle className="w-4 h-4" />}
+                          {step.status !== "success" && step.status !== "failed" && <Loader2 className="w-4 h-4 animate-spin" />}
                         </div>
-
-                        {/* Step Details Card */}
                         <div className="flex-1 bg-darkBg/35 border border-darkBorder hover:border-darkBorder/100 rounded-xl p-4 space-y-2">
                           <div className="flex justify-between items-center gap-2">
                             <span className="font-semibold text-xs text-gray-200">{step.step_name}</span>
                             <div className="flex items-center gap-2 text-[10px]">
-                              {isRetried && (
+                              {step.retry_count > 0 && (
                                 <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono text-[9px] flex items-center gap-0.5">
-                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" /> {step.retry_count} retries
+                                  <RefreshCw className="w-2.5 h-2.5" /> {step.retry_count} retries
                                 </span>
                               )}
                               <span className="text-darkMuted font-mono">{step.execution_time_ms} ms</span>
                             </div>
                           </div>
-
-                          {step.error && (
-                            <p className="text-[10px] text-rose-400 bg-rose-950/20 p-2 rounded-lg border border-rose-900/30 font-mono">
-                              [ERROR] {step.error}
-                            </p>
-                          )}
-
+                          {step.error && <p className="text-[10px] text-rose-400 bg-rose-950/20 p-2 rounded-lg border border-rose-900/30 font-mono">[ERROR] {step.error}</p>}
                           {!!step.output_data && (
                             <div className="space-y-1 pt-1 border-t border-darkBorder/20">
-                              <p className="text-[8px] font-mono uppercase text-darkMuted">Output Context Payload</p>
-                              <pre className="text-[10px] font-mono bg-darkBg/60 p-2 rounded max-h-[100px] overflow-y-auto text-gray-300 leading-normal">
-                                {JSON.stringify(step.output_data, null, 2)}
-                              </pre>
+                              <p className="text-[8px] font-mono uppercase text-darkMuted">Output Context</p>
+                              <pre className="text-[10px] font-mono bg-darkBg/60 p-2 rounded max-h-[80px] overflow-y-auto text-gray-300 leading-normal">{JSON.stringify(step.output_data, null, 2)}</pre>
                             </div>
                           )}
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 border-t border-darkBorder/50 pt-4">
+                  <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block">Final Output Context</span>
+                  <pre className="text-[10px] font-mono bg-darkBg/40 p-4 rounded-xl border border-darkBorder text-gray-300 max-h-[160px] overflow-y-auto">{JSON.stringify(selectedRun.output_context, null, 2)}</pre>
                 </div>
               </div>
-
-              {/* Final combined context log */}
-              <div className="space-y-2 border-t border-darkBorder/50 pt-4">
-                <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block">
-                  Final Run Context Out
-                </span>
-                <pre className="text-[10px] font-mono bg-darkBg/40 p-4 rounded-xl border border-darkBorder text-gray-300 max-h-[180px] overflow-y-auto">
-                  {JSON.stringify(selectedRun.output_context, null, 2)}
-                </pre>
+            ) : (
+              <div className="p-8 border border-dashed border-darkBorder rounded-xl bg-darkPanel/10 h-full flex flex-col items-center justify-center text-center text-darkMuted space-y-3 select-none">
+                <Play className="w-10 h-10 text-darkMuted stroke-1 animate-pulse" />
+                <p className="text-sm font-semibold text-gray-400">Select a Run</p>
+                <p className="text-xs max-w-sm">Click any execution from the log to view the visual step graph and output context.</p>
               </div>
-
-            </div>
-          ) : (
-            <div className="p-8 border border-dashed border-darkBorder rounded-xl bg-darkPanel/10 min-h-[400px] flex flex-col items-center justify-center text-center text-darkMuted space-y-3 select-none">
-              <Plus className="w-10 h-10 text-darkMuted animate-pulse stroke-1" />
-              <p className="text-sm font-semibold text-gray-400">Execution Panel Ready</p>
-              <p className="text-xs max-w-sm">Select an active run from the history log list or submit a planner goal to view visual workflows and step auditing outputs.</p>
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* Modal - Create Workflow */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-darkBg/75 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-darkPanel border border-darkBorder rounded-2xl p-6 shadow-2xl space-y-5 animate-scaleIn">
-            <div>
-              <h3 className="text-base font-bold text-gray-200">Define Custom Workflow</h3>
-              <p className="text-xs text-darkMuted mt-0.5">Configure reusable steps for ad-hoc tool calling execution.</p>
-            </div>
-
-            <form onSubmit={handleCreateWorkflow} className="space-y-4">
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-darkMuted uppercase">
-                  Workflow Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Audit & Report Pipeline"
-                  value={newWorkflowName}
-                  onChange={(e) => setNewWorkflowName(e.target.value)}
-                  className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal rounded-lg px-3 py-2 text-xs text-gray-200 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-darkMuted uppercase">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  placeholder="Summarize workflow goals..."
-                  value={newWorkflowDesc}
-                  onChange={(e) => setNewWorkflowDesc(e.target.value)}
-                  className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal rounded-lg px-3 py-2 text-xs text-gray-200 outline-none transition-all"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-darkMuted uppercase">
-                  Select Chain Steps (Ordered)
-                </label>
-                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
-                  {availableSteps.map(step => {
-                    const isSelected = selectedSteps.includes(step.name);
-                    const StepIcon = step.icon;
-                    return (
-                      <button
-                        key={step.name}
-                        type="button"
-                        onClick={() => toggleStep(step.name)}
-                        className={`w-full p-2.5 rounded-lg border text-left flex items-start gap-2.5 cursor-pointer transition-colors ${
-                          isSelected
-                            ? "bg-neonTeal/5 border-neonTeal text-gray-200"
-                            : "bg-darkBg/40 border-darkBorder text-darkMuted hover:border-darkBorder/100"
-                        }`}
-                      >
-                        <StepIcon className={`w-4 h-4 shrink-0 mt-0.5 ${isSelected ? "text-neonTeal" : ""}`} />
-                        <div>
-                          <p className="font-semibold text-xs">{step.name}</p>
-                          <p className="text-[9px] opacity-70">{step.desc}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setNewWorkflowName("");
-                    setNewWorkflowDesc("");
-                    setSelectedSteps([]);
-                  }}
-                  className="px-4 py-2 text-xs font-semibold bg-darkBorder/40 hover:bg-darkBorder text-gray-300 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newWorkflowName.trim() || selectedSteps.length === 0}
-                  className="px-4 py-2 text-xs font-semibold bg-neonTeal hover:bg-neonTeal/85 text-white rounded-lg shadow-lg shadow-neonTeal/10 transition-colors cursor-pointer"
-                >
-                  Save Definition
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}
-
     </div>
   );
 }
+

@@ -44,6 +44,7 @@ export function SearchDashboard() {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [showFilters, setShowFilters] = useState<boolean>(false);
   const [recentQueries, setRecentQueries] = useState<string[]>([]);
+  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -364,9 +365,9 @@ export function SearchDashboard() {
       {/* Main Results Section */}
       {(searching || results.length > 0 || aiAnswer) && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          
-          {/* Left/Center: AI Answer and Result items lists */}
-          <div className="lg:col-span-2 space-y-6">
+
+          {/* Left/Center: AI Answer + Result items */}
+          <div className={`space-y-6 ${selectedResult ? "lg:col-span-1" : "lg:col-span-2"}`}>
             
             {/* AI Synthesized Answer Box */}
             {aiAnswer && (
@@ -404,10 +405,15 @@ export function SearchDashboard() {
                 </div>
               ) : (
                 results.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className={`bg-darkPanel/20 border border-darkBorder hover:border-darkBorder/100 p-4 rounded-xl flex items-start gap-4 transition-all ${getBorderColor(item.type)}`}
-                  >
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedResult(selectedResult?.id === item.id ? null : item)}
+                      className={`bg-darkPanel/20 border p-4 rounded-xl flex items-start gap-4 transition-all cursor-pointer ${getBorderColor(item.type)} ${
+                        selectedResult?.id === item.id
+                          ? "border-neonIndigo ring-1 ring-neonIndigo/20 bg-neonIndigo/5"
+                          : "border-darkBorder hover:border-darkBorder/100"
+                      }`}
+                    >
                     <div className="p-2.5 bg-darkBg/60 border border-darkBorder/50 rounded-lg">
                       {getResultIcon(item.type)}
                     </div>
@@ -452,8 +458,93 @@ export function SearchDashboard() {
 
           </div>
 
-          {/* Right side: Search Analytics dashboard */}
-          <div className="lg:col-span-1 space-y-6">
+          {/* Split-pane: Result Preview Panel */}
+          {selectedResult ? (
+            <div className="lg:col-span-2 bg-darkPanel/25 border border-neonIndigo/20 rounded-xl p-6 space-y-5 animate-fadeIn overflow-y-auto max-h-[680px]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-darkBg/60 border border-darkBorder/50 rounded-lg">
+                    {getResultIcon(selectedResult.type)}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-200">{selectedResult.title}</h3>
+                    <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded mt-1 inline-block ${
+                      selectedResult.type === "document" ? "bg-neonTeal/10 text-neonTeal border border-neonTeal/20"
+                      : selectedResult.type === "invoice" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      : selectedResult.type === "workflow" ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                      : selectedResult.type === "approval" ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                      : "bg-gray-500/10 text-gray-400 border border-gray-500/20"
+                    }`}>{selectedResult.type}</span>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedResult(null)} className="text-darkMuted hover:text-gray-300 p-1 rounded cursor-pointer transition-colors">
+                  <span className="text-xs font-mono">✕</span>
+                </button>
+              </div>
+
+              {/* Relevance score bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[10px] font-mono text-darkMuted">
+                  <span>Relevance Score</span>
+                  <span className="text-neonIndigo font-bold">{(selectedResult.score * 100).toFixed(1)}%</span>
+                </div>
+                <div className="h-1.5 bg-darkBorder/40 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-neonIndigo to-neonTeal rounded-full transition-all duration-700"
+                    style={{ width: `${selectedResult.score * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-darkMuted">Description</span>
+                <p className="text-xs text-gray-300 leading-relaxed font-sans border-l-2 border-neonIndigo/30 pl-3">{selectedResult.description}</p>
+              </div>
+
+              {/* Metadata table */}
+              {selectedResult.metadata && Object.keys(selectedResult.metadata).length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-darkMuted">Metadata</span>
+                  <div className="rounded-lg border border-darkBorder/50 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-darkBorder/20">
+                        {Object.entries(selectedResult.metadata).map(([k, v]) => (
+                          <tr key={k} className="hover:bg-darkBg/20">
+                            <td className="px-3 py-1.5 font-mono text-darkMuted w-1/3">{k}</td>
+                            <td className="px-3 py-1.5 text-gray-300 font-sans">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Sources */}
+              {selectedResult.sources.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-darkMuted">Source Indices</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedResult.sources.map(src => (
+                      <span key={src} className="text-[10px] font-mono px-2 py-0.5 rounded bg-darkBg/60 border border-darkBorder/60 text-neonTeal">{src}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Answer excerpt if available */}
+              {aiAnswer && (
+                <div className="space-y-2 border-t border-darkBorder/40 pt-4">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-neonIndigo flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> AI Context
+                  </span>
+                  <p className="text-xs text-gray-400 leading-relaxed italic">{aiAnswer.slice(0, 280)}{aiAnswer.length > 280 ? "…" : ""}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="lg:col-span-1 space-y-6">
             
             {/* Search performance telemetry */}
             <div className="bg-darkPanel/20 border border-darkBorder rounded-xl p-5 space-y-4">
@@ -523,8 +614,8 @@ export function SearchDashboard() {
                 </div>
               )}
             </div>
-
-          </div>
+            </div>
+          )}
 
         </div>
       )}

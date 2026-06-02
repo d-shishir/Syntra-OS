@@ -3,8 +3,16 @@ import { FileUpload } from "./components/FileUpload";
 import { DocumentList } from "./components/DocumentList";
 import type { DocumentMetadata } from "./components/DocumentList";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { Cpu, Server, Database, Sparkles, Search, Loader2, ArrowUpRight, CheckCircle2, HelpCircle, MessageSquare, BookOpen, Send, ChevronDown, ChevronUp, Clock, Activity, Zap, Sliders, Eye, EyeOff, Users, ShieldAlert, Bell, Lock, Network } from "lucide-react";
-import { Dashboard } from "./modules/invoice-automation/Dashboard";
+import { 
+  Server, Search, Loader2, HelpCircle, Send, ChevronDown, ChevronUp, 
+  Clock, Sliders, Eye, EyeOff, Lock, AlertTriangle, Zap
+} from "lucide-react";
+import { AppShell } from "./layouts/AppShell";
+import type { WorkspaceTab } from "./layouts/AppShell";
+import { apiClient } from "./services/apiClient";
+
+// Import Module Dashboards
+import { Dashboard as FinanceDashboard } from "./modules/invoice-automation/Dashboard";
 import { WorkflowDashboard } from "./modules/workflow-engine/WorkflowDashboard";
 import { CrmDashboard } from "./modules/crm-intelligence/CrmDashboard";
 import { WorkerMonitor } from "./modules/background-worker/WorkerMonitor";
@@ -19,49 +27,6 @@ import { CopilotDashboard } from "./modules/ai-copilot/CopilotDashboard";
 import { GraphDashboard } from "./modules/knowledge-graph/GraphDashboard";
 import { SearchDashboard } from "./modules/enterprise-search/SearchDashboard";
 import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
-
-const BACKEND_URL = "http://localhost:8000";
-
-const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
-  const token = localStorage.getItem("syntra_token") || "";
-  return {
-    "Authorization": `Bearer ${token}`,
-    ...extraHeaders
-  };
-};
-
-// Install global fetch interceptor
-const originalFetch = window.fetch;
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const token = localStorage.getItem("syntra_token");
-  if (token) {
-    const nextInit = { ...init };
-    if (!nextInit.headers) {
-      nextInit.headers = {};
-    }
-    
-    if (nextInit.headers instanceof Headers) {
-      if (!nextInit.headers.has("Authorization")) {
-        nextInit.headers.set("Authorization", `Bearer ${token}`);
-      }
-    } else if (Array.isArray(nextInit.headers)) {
-      const hasAuth = nextInit.headers.some(([k]) => k.toLowerCase() === 'authorization');
-      if (!hasAuth) {
-        nextInit.headers = [...nextInit.headers, ["Authorization", `Bearer ${token}`]];
-      }
-    } else {
-      nextInit.headers = {
-        ...nextInit.headers,
-      };
-      const headersObj = nextInit.headers as Record<string, string>;
-      if (!headersObj["Authorization"] && !headersObj["authorization"]) {
-        headersObj["Authorization"] = `Bearer ${token}`;
-      }
-    }
-    return originalFetch(input, nextInit);
-  }
-  return originalFetch(input, init);
-};
 
 interface SearchResult {
   content: string;
@@ -104,8 +69,6 @@ interface AIStatus {
   detail: string;
 }
 
-type WorkspaceTab = "hub" | "copilot" | "graph" | "search" | "research" | "assistant" | "automation" | "worker" | "agents" | "observability" | "review" | "events" | "notifications" | "auth";
-
 interface SystemMetrics {
   documents_indexed: number;
   total_chunks: number;
@@ -114,23 +77,19 @@ interface SystemMetrics {
 }
 
 function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem("syntra_token"));
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+
+  // App States
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [trashDocuments, setTrashDocuments] = useState<DocumentMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  
-  // Connection status tracking
   const [apiConnected, setApiConnected] = useState<boolean>(true);
-  
-  // Workspace Tab States
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("hub");
   const [assistantSubTab, setAssistantSubTab] = useState<"chat" | "search">("chat");
   const [automationSubTab, setAutomationSubTab] = useState<"finance" | "crm" | "workflows">("finance");
-
-  // Simplified vs Developer Mode State
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(false);
-
-
 
   // Semantic Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -154,28 +113,93 @@ function App() {
   const [showRetrievedChunks, setShowRetrievedChunks] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // System Metrics
+  // System telemetry & Health Status
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
-
-  // AI Connection Status
   const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
 
+  // Login inputs state
+  const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  const decodeJwt = (activeToken: string) => {
+    try {
+      const base64Url = activeToken.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const fetchUserContext = useCallback((activeToken: string) => {
+    const payload = decodeJwt(activeToken);
+    if (payload) {
+      setCurrentUser({
+        id: payload.sub,
+        name: payload.role === "admin" 
+          ? "Admin Director" 
+          : payload.role.replace("_", " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        role: payload.role,
+        department: payload.department
+      });
+    } else {
+      localStorage.removeItem("syntra_token");
+      setToken(null);
+      setCurrentUser(null);
+    }
+  }, []);
+
+  const handleLoginSubmit = async (e: React.FormEvent | string, manualPassword?: string) => {
+    if (typeof e !== "string") {
+      e.preventDefault();
+    }
+    setLoginError(null);
+    setLoginLoading(true);
+
+    const email = typeof e === "string" ? e : emailInput;
+    const password = typeof e === "string" ? manualPassword : passwordInput;
+
+    try {
+      const res = await apiClient.post("/api/v1/auth/login", { email, password });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("syntra_token", data.access_token);
+        setToken(data.access_token);
+        fetchUserContext(data.access_token);
+      } else {
+        const errData = await res.json();
+        setLoginError(errData.detail || "Authentication credentials rejected.");
+      }
+    } catch (err) {
+      setLoginError("Failed to reach security authentication service.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("syntra_token");
+    setToken(null);
+    setCurrentUser(null);
+  };
+
   const fetchDocuments = useCallback(async () => {
-    await Promise.resolve();
+    if (!token) return;
     setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/documents?is_deleted=false`, {
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.get("/documents", { params: { is_deleted: "false" } });
       if (!response.ok) {
         throw new Error("Failed to fetch documents.");
       }
       const data = await response.json();
       setDocuments(data);
 
-      const trashResponse = await fetch(`${BACKEND_URL}/documents?is_deleted=true`, {
-        headers: getAuthHeaders()
-      });
+      const trashResponse = await apiClient.get("/documents", { params: { is_deleted: "true" } });
       if (trashResponse.ok) {
         const trashData = await trashResponse.json();
         setTrashDocuments(trashData);
@@ -183,23 +207,18 @@ function App() {
       setApiConnected(true);
     } catch (error) {
       console.error("Error fetching documents:", error);
-      if (error instanceof Error && error.message === "Failed to fetch") {
-        setApiConnected(false);
-      }
+      setApiConnected(false);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   const handleTrashDocument = async (id: string) => {
-    if (!window.confirm("Are you sure you want to move this document to the Trash? It will remain in the trash for 30 days before being permanently deleted.")) {
+    if (!window.confirm("Are you sure you want to move this document to the Trash?")) {
       return;
     }
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}/trash`, {
-        method: "POST",
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.post(`/documents/${id}/trash`);
       if (response.ok) {
         fetchDocuments();
       }
@@ -210,10 +229,7 @@ function App() {
 
   const handleRestoreDocument = async (id: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}/restore`, {
-        method: "POST",
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.post(`/documents/${id}/restore`);
       if (response.ok) {
         fetchDocuments();
       }
@@ -223,14 +239,11 @@ function App() {
   };
 
   const handleDeleteDocument = async (id: string) => {
-    if (!window.confirm("Are you sure you want to permanently delete this document? This will delete all text chunks, extractions, anomalies, and cannot be undone.")) {
+    if (!window.confirm("Are you sure you want to permanently delete this document?")) {
       return;
     }
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.delete(`/documents/${id}`);
       if (response.ok) {
         fetchDocuments();
       }
@@ -240,10 +253,9 @@ function App() {
   };
 
   const fetchAIStatus = useCallback(async () => {
+    if (!token) return;
     try {
-      const response = await fetch(`${BACKEND_URL}/health/ai`, {
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.get("/health/ai");
       if (response.ok) {
         const data = await response.json();
         setAiStatus(data);
@@ -266,17 +278,14 @@ function App() {
         provider: "API Connection Failure",
         detail: "Could not reach the health endpoint."
       });
-      if (error instanceof Error && error.message === "Failed to fetch") {
-        setApiConnected(false);
-      }
+      setApiConnected(false);
     }
-  }, []);
+  }, [token]);
 
   const fetchSystemMetrics = useCallback(async () => {
+    if (!token) return;
     try {
-      const response = await fetch(`${BACKEND_URL}/system-metrics`, {
-        headers: getAuthHeaders()
-      });
+      const response = await apiClient.get("/system-metrics");
       if (response.ok) {
         const data = await response.json();
         setSystemMetrics(data);
@@ -284,20 +293,18 @@ function App() {
       }
     } catch (error) {
       console.error("Error fetching system metrics:", error);
-      if (error instanceof Error && error.message === "Failed to fetch") {
-        setApiConnected(false);
-      }
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchDocuments();
-    fetchAIStatus();
-    fetchSystemMetrics();
-  }, [fetchDocuments, fetchAIStatus, fetchSystemMetrics]);
+    if (token) {
+      fetchUserContext(token);
+      fetchDocuments();
+      fetchAIStatus();
+      fetchSystemMetrics();
+    }
+  }, [token, fetchDocuments, fetchAIStatus, fetchSystemMetrics, fetchUserContext]);
 
-  // Scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, chatting]);
@@ -310,9 +317,7 @@ function App() {
     setSearchError(null);
     setSearched(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/search?query=${encodeURIComponent(searchQuery)}`, {
-        headers: getAuthHeaders()
-      });
+      const res = await apiClient.get("/search", { params: { query: searchQuery } });
       if (!res.ok) {
         throw new Error("Semantic query request failed.");
       }
@@ -338,12 +343,7 @@ function App() {
     setExpandedSourceIdx(null);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/chat-with-documents`, {
-        method: "POST",
-        headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ query: userMessage })
-      });
-
+      const res = await apiClient.post("/chat-with-documents", { query: userMessage });
       if (!res.ok) {
         throw new Error("Server error processing chat query.");
       }
@@ -355,7 +355,6 @@ function App() {
         sources: data.sources,
         metrics: data.metrics
       }]);
-      // Auto-select the newly arrived message for debugging view
       setSelectedMessageIdx(messages.length + 1);
     } catch (err) {
       const error = err as Error;
@@ -373,423 +372,452 @@ function App() {
     setChatInput(queryText);
   };
 
-  // Define tab navigation groups based on mode
-  const tabsList = [
-    { id: "hub", label: "Control Center", num: "00", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Cpu },
-    { id: "copilot", label: "AI Copilot", num: "AI", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
-    { id: "graph", label: "Knowledge Graph", num: "KG", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Network },
-    { id: "search", label: "Enterprise Search", num: "SR", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Search },
-    { id: "research", label: "Research Lab", num: "RL", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: BookOpen },
-    { id: "assistant", label: "Document Assistant", num: "01", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: MessageSquare },
-    { id: "automation", label: "Business Automation", num: "02", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sliders },
-    { id: "agents", label: "Multi-Agent System", num: "03", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Sparkles },
-    { id: "review", label: "Human Review", num: "04", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: ShieldAlert },
-    ...(isAdvancedMode ? [
-      { id: "worker", label: "Worker Queue", num: "05", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Server },
-      { id: "observability", label: "Observability", num: "06", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Activity },
-      { id: "events", label: "Event Bus", num: "07", activeColor: "border-neonIndigo text-neonIndigo bg-neonIndigo/5", icon: Zap },
-      { id: "notifications", label: "Alert Hub", num: "08", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Bell },
-      { id: "auth", label: "Security IAM", num: "09", activeColor: "border-neonTeal text-neonTeal bg-neonTeal/5", icon: Lock }
-    ] : [])
-  ];
-
-  return (
-    <div className="min-h-screen pb-16 flex flex-col">
-      {/* Navbar / Header */}
-      <header className="border-b border-darkBorder bg-darkPanel/20 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-neonIndigo/10 flex items-center justify-center text-neonIndigo border border-neonIndigo/20">
-              <Cpu className="w-4 h-4" />
-            </div>
-            <div>
-              <h1 className="font-display font-extrabold text-gray-200 tracking-wider flex items-center gap-1.5 text-base uppercase">
-                Syntra OS
-                <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-neonIndigo/20 text-neonIndigo border border-neonIndigo/30 tracking-normal font-medium">
-                  Workspace
-                </span>
-              </h1>
-              <p className="text-[9px] font-mono text-darkMuted uppercase tracking-wider mt-0.5">AI-Powered Operations Platform</p>
-            </div>
-          </div>
+  // 1. Root Login Gating layout
+  if (!token) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-darkBg text-gray-200 p-6">
+        <div className="max-w-md w-full p-8 border border-darkBorder rounded-2xl bg-darkPanel/45 space-y-6 shadow-2xl relative">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-neonIndigo/5 rounded-full blur-3xl pointer-events-none" />
           
-          <div className="flex items-center gap-6 text-xs">
-            {/* Developer Mode switch toggle */}
-            <div className="flex items-center gap-2 border-r border-darkBorder/60 pr-6 mr-1">
-              <span className="text-xs text-darkMuted font-medium">Developer Mode</span>
-              <label className="switch-toggle">
-                <input 
-                  type="checkbox" 
-                  checked={isAdvancedMode} 
-                  onChange={(e) => setIsAdvancedMode(e.target.checked)} 
-                />
-                <span className="switch-slider"></span>
-              </label>
+          <div className="text-center space-y-2 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20 flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6" />
             </div>
-
-            {isAdvancedMode && apiConnected && (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-darkBorder/30 hover:bg-neonTeal/20 text-gray-300 hover:text-neonTeal border border-darkBorder/60 transition-all cursor-pointer mr-1"
-                title={sidebarOpen ? "Collapse sidebar control panel" : "Expand sidebar control panel"}
-              >
-                <Sliders className="w-3 h-3" />
-                <span>{sidebarOpen ? "Hide Panel" : "Show Panel"}</span>
-              </button>
-            )}
-
-            <div className={`flex items-center gap-1.5 font-medium ${apiConnected ? "text-emerald-400" : "text-rose-400"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${apiConnected ? "bg-emerald-400 animate-ping" : "bg-rose-500 animate-pulse"}`} />
-              {apiConnected ? "API Connected" : "API Offline"}
-            </div>
-            {apiConnected && aiStatus && isAdvancedMode && (
-              <div className={`flex items-center gap-1.5 font-medium px-2 py-0.5 rounded border ${
-                aiStatus.status === "connected"
-                  ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
-                  : aiStatus.status === "mock"
-                  ? "text-amber-400 border-amber-500/20 bg-amber-500/5"
-                  : "text-rose-400 border-rose-500/20 bg-rose-500/5"
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  aiStatus.status === "connected"
-                    ? "bg-emerald-400 animate-pulse"
-                    : aiStatus.status === "mock"
-                    ? "bg-amber-400"
-                    : "bg-rose-400"
-                }`} />
-                AI: {aiStatus.provider}
-              </div>
-            )}
+            <h3 className="text-lg font-display font-extrabold text-gray-200">Authenticate Syntra OS</h3>
+            <p className="text-xs text-darkMuted">Enter your credentials or select a simulation profile to access the operational shell.</p>
           </div>
-        </div>
-      </header>
 
-      {!apiConnected ? (
-        <div className="max-w-4xl mx-auto px-6 mt-16 w-full flex-1 flex flex-col items-center justify-center animate-fadeIn text-center space-y-6">
-          <div className="p-8 border border-rose-500/25 bg-darkPanel/20 rounded-none max-w-xl space-y-5 relative shadow-lg shadow-rose-950/5">
-            {/* Corner Indicators */}
-            <span className="absolute -top-2 -left-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
-            <span className="absolute -top-2 -right-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
-            <span className="absolute -bottom-2 -left-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
-            <span className="absolute -bottom-2 -right-1 font-mono font-extrabold text-[10px] text-rose-500 select-none">+</span>
-            
-            <div className="w-12 h-12 mx-auto rounded border border-rose-500/20 bg-rose-500/10 flex items-center justify-center text-rose-400">
-              <Server className="w-6 h-6 animate-pulse" />
-            </div>
-            
-            <div className="space-y-2">
-              <h2 className="font-display font-extrabold text-sm text-gray-200 tracking-wider uppercase">
-                [ALERT] Central Mainframe Offline
-              </h2>
-              <p className="font-mono text-[9px] text-rose-400 uppercase tracking-widest leading-normal">
-                Critical: Syntra OS API Node Unreachable
-              </p>
-              <div className="border-t border-darkBorder/40 my-3 pt-3" />
-              <p className="text-xs text-darkMuted leading-relaxed">
-                The operations node at <code className="text-gray-300 font-mono bg-darkBg/60 px-1 py-0.5 border border-darkBorder/45 rounded">{BACKEND_URL}</code> is unreachable. Vector storage retrieval, semantic chunking pipelines, and LLM automation services are suspended until contact is restored.
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setLoading(true);
-                fetchDocuments();
-                fetchAIStatus();
-                fetchSystemMetrics();
-              }}
-              className="w-full py-2.5 text-xs font-mono font-bold uppercase tracking-wider text-white bg-rose-950 hover:bg-rose-900 border border-rose-700/40 rounded-none transition-all cursor-pointer inline-flex items-center justify-center gap-2"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              Reconnect Mainframe
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Main Grid Content */
-        <main className="max-w-7xl w-full mx-auto px-6 mt-8 flex-1 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
-        {/* Left Side: Upload & System Stats */}
-        {(isAdvancedMode ? sidebarOpen : (activeTab === "assistant")) ? (
-          <div className="space-y-6 lg:col-span-1 animate-fadeIn">
-            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4">
-              <div>
-                <h2 className="text-base font-semibold text-gray-200">Upload PDF Document</h2>
-                <p className="text-xs text-darkMuted mt-0.5">Ingest files into the pipeline database</p>
-              </div>
-              
-              <FileUpload 
-                onUploadSuccess={fetchDocuments}
-                backendUrl={BACKEND_URL}
-                isAdvancedMode={isAdvancedMode}
+          <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs relative z-10">
+            <div className="space-y-1.5">
+              <label className="text-darkMuted font-semibold">Email Address</label>
+              <input
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="form-input"
+                placeholder="e.g. admin@syntra.io"
+                required
               />
             </div>
 
-            {/* Ingested Library Catalog */}
-            {activeTab === "assistant" && (
-              <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4 max-h-[380px] overflow-y-auto">
-                <div className="flex justify-between items-center border-b border-darkBorder/40 pb-2">
-                  <h3 className="text-xs font-semibold text-darkMuted uppercase tracking-wider">
-                    Document Library ({documents.length})
-                  </h3>
-                </div>
-                <DocumentList
-                  documents={documents}
-                  trashDocuments={trashDocuments}
-                  onSelectDocument={setSelectedDocId}
-                  onTrashDocument={handleTrashDocument}
-                  onRestoreDocument={handleRestoreDocument}
-                  onDeleteDocument={handleDeleteDocument}
-                  isLoading={loading}
-                  sidebarOpen={true}
-                  isCompact={true}
-                />
+            <div className="space-y-1.5">
+              <label className="text-darkMuted font-semibold">Password</label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="form-input"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            {loginError && (
+              <div className="p-3 border border-red-500/20 bg-red-500/5 text-red-400 rounded-lg flex items-center gap-2 font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
               </div>
             )}
 
-            {/* System status details */}
-            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4">
-              <h3 className="text-xs font-semibold text-darkMuted uppercase tracking-wider">
-                {isAdvancedMode ? "Pipeline Integration" : "AI Core Integrations"}
-              </h3>
-              
-              <div className="space-y-3">
-                {isAdvancedMode ? (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-neonTeal">
-                        <Server className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-300 font-medium">API Endpoint</p>
-                        <p className="text-[10px] text-darkMuted">FastAPI running on localhost:8000</p>
-                      </div>
-                    </div>
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 text-xs"
+            >
+              {loginLoading ? "Authenticating session..." : "Sign In to Platform"}
+            </button>
+          </form>
 
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-neonIndigo">
-                        <Database className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-300 font-medium">PostgreSQL Database</p>
-                        <p className="text-[10px] text-darkMuted">DB: doc_ingest | Port: 5433</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-yellow-400">
-                        <Sparkles className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-300 font-medium">Vector Store Setup</p>
-                        <p className="text-[10px] text-darkMuted">pgvector active (HNSW indexed)</p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-emerald-400">
-                      <CheckCircle2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-300 font-medium">AI Systems Online</p>
-                      <p className="text-[10px] text-darkMuted font-mono">Ready for operations</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3">
-                  <div className={`w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center ${
-                    !aiStatus
-                      ? "text-gray-400"
-                      : aiStatus.status === "connected"
-                      ? "text-emerald-400"
-                      : aiStatus.status === "mock"
-                      ? "text-amber-400"
-                      : "text-rose-400"
-                  }`}>
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-300 font-medium">AI Model Engine</p>
-                    <div className="text-[10px] text-darkMuted leading-tight">
-                      {aiStatus ? (
-                        <>
-                          <span className="font-semibold">{aiStatus.provider}</span>
-                          {isAdvancedMode && (
-                            <>
-                              <span className="block text-[9px] text-gray-400 mt-0.5">Chat: {aiStatus.model}</span>
-                              <span className="block text-[9px] text-gray-400">Embeddings: {aiStatus.embedding_model}</span>
-                            </>
-                          )}
-                          <span className="block text-[9px] text-darkMuted mt-0.5">{aiStatus.detail}</span>
-                        </>
-                      ) : (
-                        "Checking status..."
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {systemMetrics && isAdvancedMode && (
-                  <>
-                    <div className="border-t border-darkBorder/30 my-2 pt-2" />
-                    
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-neonTeal">
-                        <Activity className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-300 font-medium">Avg RAG Latency</p>
-                        <p className="text-[10px] text-darkMuted">{systemMetrics.avg_query_time_ms} ms</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-darkBorder/40 flex items-center justify-center text-neonIndigo">
-                        <Zap className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-300 font-medium">RAG Cache Hit Rate</p>
-                        <p className="text-[10px] text-darkMuted">{systemMetrics.cache_hit_rate}%</p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+          <div className="border-t border-darkBorder/60 pt-4 space-y-2.5 relative z-10">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-darkMuted block">Quick-Select Simulation Profiles</span>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              {[
+                { email: "admin@syntra.io", label: "Admin Director" },
+                { email: "finance@syntra.io", label: "Finance Specialist" },
+                { email: "sales@syntra.io", label: "Sales Rep" },
+                { email: "compliance@syntra.io", label: "Compliance Officer" }
+              ].map(profile => (
+                <button
+                  key={profile.email}
+                  type="button"
+                  onClick={() => handleLoginSubmit(profile.email, `${profile.email.split('@')[0]}password`)}
+                  className="p-2 border border-darkBorder bg-darkPanel/20 hover:border-darkBorder/100 text-darkMuted hover:text-gray-300 rounded-lg text-left transition-all cursor-pointer"
+                >
+                  <span className="font-semibold block">{profile.label}</span>
+                  <span className="opacity-60 block text-[9px] truncate">{profile.email}</span>
+                </button>
+              ))}
             </div>
           </div>
-        ) : null}
+        </div>
+      </div>
+    );
+  }
 
-        {/* Right Side: Tabbed workspaces */}
-        <div className={`${(isAdvancedMode ? sidebarOpen : (activeTab === "assistant")) ? "lg:col-span-3" : "lg:col-span-4"} space-y-6 flex flex-col transition-all duration-300`}>
-          {/* Tab Selector Buttons */}
-          <div className="flex flex-wrap gap-2 border-b border-darkBorder/60 pb-3">
-            {tabsList.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as WorkspaceTab)}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 text-[10px] font-mono font-bold uppercase tracking-wider border transition-all cursor-pointer rounded-lg ${
-                    isActive
-                      ? `${tab.activeColor} border-current`
-                      : "border-darkBorder bg-darkPanel/10 text-darkMuted hover:text-gray-300 hover:border-darkBorder/100"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                  <span className="text-[8px] opacity-40 ml-1">[{tab.num}]</span>
-                </button>
-              );
-            })}
+  // 2. Central Mainframe Offline
+  if (!apiConnected) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-darkBg text-gray-200 p-6">
+        <div className="p-8 border border-rose-500/25 bg-darkPanel/20 rounded-xl max-w-xl space-y-5 relative shadow-lg text-center">
+          <div className="w-12 h-12 mx-auto rounded-lg border border-rose-500/20 bg-rose-500/10 flex items-center justify-center text-rose-400">
+            <Server className="w-6 h-6 animate-pulse" />
+          </div>
+          
+          <div className="space-y-2">
+            <h2 className="font-display font-extrabold text-sm text-gray-200 tracking-wider uppercase">
+              [ALERT] Central Mainframe Offline
+            </h2>
+            <p className="font-mono text-[9px] text-rose-400 uppercase tracking-widest leading-normal">
+              Critical: Syntra OS API Node Unreachable
+            </p>
+            <div className="border-t border-darkBorder/40 my-3 pt-3" />
+            <p className="text-xs text-darkMuted leading-relaxed">
+              The platform could not reach the backend operations server. Please check that the backend daemon is running properly on port 8000 and try again.
+            </p>
           </div>
 
-          {/* Active Tab View Panels */}
-          <div className="flex-1">
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchDocuments();
+              fetchAIStatus();
+              fetchSystemMetrics();
+            }}
+            className="w-full py-2.5 text-xs font-mono font-bold uppercase tracking-wider text-white bg-rose-950 hover:bg-rose-900 border border-rose-700/40 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Reconnect Mainframe
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-            {activeTab === "hub" && (
-              <UnifiedDashboard />
-            )}
+  // 3. Render Dashboard Component switch
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "hub":
+        return <UnifiedDashboard />;
+      case "copilot":
+        return <CopilotDashboard />;
+      case "graph":
+        return <GraphDashboard />;
+      case "search":
+        return <SearchDashboard />;
+      case "research":
+        return <ResearchDashboard />;
+      case "agents":
+        return <AgentDashboard backendUrl="http://localhost:8000" />;
+      case "worker":
+        return <WorkerMonitor />;
+      case "observability":
+        return <ObservabilityDashboard backendUrl="http://localhost:8000" />;
+      case "review":
+        return <ReviewQueueDashboard backendUrl="http://localhost:8000" />;
+      case "events":
+        return <EventDashboard />;
+      case "notifications":
+        return <NotificationDashboard />;
+      case "auth":
+        return <AuthDashboard />;
+      case "automation":
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Sub Tab Navigation for Business Automation */}
+            <div className="flex flex-wrap gap-2 border-b border-darkBorder/40 pb-2.5">
+              <button
+                onClick={() => setAutomationSubTab("finance")}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  automationSubTab === "finance"
+                    ? "bg-neonTeal/10 text-neonTeal border border-neonTeal/20"
+                    : "text-darkMuted hover:text-gray-200"
+                }`}
+              >
+                Finance Invoices
+              </button>
+              <button
+                onClick={() => setAutomationSubTab("crm")}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  automationSubTab === "crm"
+                    ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
+                    : "text-darkMuted hover:text-gray-200"
+                }`}
+              >
+                CRM Lead Capture
+              </button>
+              <button
+                onClick={() => setAutomationSubTab("workflows")}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  automationSubTab === "workflows"
+                    ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
+                    : "text-darkMuted hover:text-gray-200"
+                }`}
+              >
+                Active Workflows
+              </button>
+            </div>
 
-            {activeTab === "copilot" && (
-              <CopilotDashboard />
-            )}
+            <div className="mt-4">
+              {automationSubTab === "finance" && (
+                <FinanceDashboard backendUrl="http://localhost:8000" />
+              )}
+              {automationSubTab === "crm" && (
+                <CrmDashboard backendUrl="http://localhost:8000" />
+              )}
+              {automationSubTab === "workflows" && (
+                <WorkflowDashboard backendUrl="http://localhost:8000" />
+              )}
+            </div>
+          </div>
+        );
+      case "assistant":
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Sub Tab Navigation (AI Chat vs Semantic Search) */}
+            <div className="flex justify-between items-center border-b border-darkBorder/40 pb-2.5">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAssistantSubTab("chat")}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    assistantSubTab === "chat"
+                      ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
+                      : "text-darkMuted hover:text-gray-200"
+                  }`}
+                >
+                  AI Chat Assistant
+                </button>
+                <button
+                  onClick={() => setAssistantSubTab("search")}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    assistantSubTab === "search"
+                      ? "bg-neonTeal/10 text-neonTeal border border-neonTeal/20"
+                      : "text-darkMuted hover:text-gray-200"
+                  }`}
+                >
+                  Semantic Search
+                </button>
+              </div>
 
-            {activeTab === "graph" && (
-              <GraphDashboard />
-            )}
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="px-2.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded-lg border border-darkBorder bg-darkPanel/20 text-darkMuted hover:text-gray-200 hover:border-darkBorder/100 cursor-pointer transition-all"
+              >
+                {sidebarOpen ? "Hide Library" : "Show Library"}
+              </button>
+            </div>
 
-            {activeTab === "search" && (
-              <SearchDashboard />
-            )}
+            {assistantSubTab === "chat" ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[600px]">
+                {/* Left side: RAG Chat pane */}
+                <div className="lg:col-span-2 h-[550px] lg:h-full bg-darkPanel/20 border border-darkBorder rounded-xl p-5 flex flex-col justify-between space-y-4">
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 select-text">
+                    {messages.map((msg, index) => (
+                      <div
+                        key={index}
+                        className={`flex flex-col space-y-1 max-w-[85%] ${
+                          msg.sender === "user" ? "ml-auto items-end" : "mr-auto items-start"
+                        }`}
+                      >
+                        <div
+                          onClick={() => {
+                            if (msg.sender === "assistant") {
+                              setSelectedMessageIdx(index);
+                            }
+                          }}
+                          className={`p-3.5 rounded-xl text-sm leading-relaxed ${
+                            msg.sender === "assistant" ? "cursor-pointer hover:border-darkBorder/100 transition-colors" : ""
+                          } ${
+                            selectedMessageIdx === index
+                              ? "border-neonIndigo bg-darkPanel shadow-lg shadow-neonIndigo/5"
+                              : ""
+                          } ${
+                            msg.sender === "user"
+                              ? "bg-darkBorder/80 text-white rounded-br-none"
+                              : "bg-darkPanel border border-darkBorder/80 text-gray-200 rounded-bl-none"
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
 
-            {activeTab === "research" && (
-              <ResearchDashboard />
-            )}
+                        {msg.sender === "assistant" && msg.sources && msg.sources.length > 0 && (
+                          <div className="w-full mt-1.5 space-y-1">
+                            <button
+                              onClick={() => setExpandedSourceIdx(expandedSourceIdx === index ? null : index)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-neonIndigo hover:text-neonIndigo/80 uppercase tracking-wide transition-colors"
+                            >
+                              <span>Sources & Citations ({msg.sources.length})</span>
+                              {expandedSourceIdx === index ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
 
-            {activeTab === "assistant" && (
-              <div className="space-y-6 animate-fadeIn">
-                {/* Sub Tab Navigation (AI Chat vs Semantic Search) */}
-                <div className="flex gap-2 border-b border-darkBorder/40 pb-2.5">
-                  <button
-                    onClick={() => setAssistantSubTab("chat")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      assistantSubTab === "chat"
-                        ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
-                        : "text-darkMuted hover:text-gray-200"
-                    }`}
-                  >
-                    AI Chat Assistant
-                  </button>
-                  <button
-                    onClick={() => setAssistantSubTab("search")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      assistantSubTab === "search"
-                        ? "bg-neonTeal/10 text-neonTeal border border-neonTeal/20"
-                        : "text-darkMuted hover:text-gray-200"
-                    }`}
-                  >
-                    Semantic Search
-                  </button>
+                            {expandedSourceIdx === index && (
+                              <div className="space-y-2 p-3 bg-darkBg/50 border border-darkBorder/50 rounded-xl mt-1 max-w-lg animate-fadeIn text-xs text-darkMuted leading-relaxed">
+                                {msg.sources.map((src, sIdx) => (
+                                  <div key={sIdx} className="border-b border-darkBorder/30 pb-2 last:border-b-0 last:pb-0">
+                                    <div className="flex justify-between items-center mb-1">
+                                      <span className="font-semibold text-gray-300 truncate max-w-[180px]">{src.filename}</span>
+                                      <span className="text-[10px] text-neonTeal">
+                                        {isAdvancedMode ? `${(src.score * 100).toFixed(1)}% similarity` : "Highly Relevant Match"}
+                                      </span>
+                                    </div>
+                                    <p className="italic text-[11px] bg-darkPanel/35 p-2 rounded text-darkMuted select-text">
+                                      "{src.chunk_text}"
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {chatting && (
+                      <div className="flex items-center gap-2.5 p-3 rounded-xl bg-darkPanel border border-darkBorder/80 max-w-[200px] text-xs text-darkMuted mr-auto">
+                        <Loader2 className="w-3.5 h-3.5 text-neonIndigo animate-spin" />
+                        Retrieving context...
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {messages.length === 1 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-darkBorder/40">
+                      <button
+                        onClick={() => selectSuggestion("What is the invoice amount for Canada Post?")}
+                        className="px-3 py-1.5 text-[11px] font-medium text-darkMuted hover:text-white bg-darkBg/40 hover:bg-darkBorder/60 border border-darkBorder/60 rounded-full transition-all cursor-pointer"
+                      >
+                        "What is the invoice amount?"
+                      </button>
+                      <button
+                        onClick={() => selectSuggestion("Summarize the key points of the documents")}
+                        className="px-3 py-1.5 text-[11px] font-medium text-darkMuted hover:text-white bg-darkBg/40 hover:bg-darkBorder/60 border border-darkBorder/60 rounded-full transition-all cursor-pointer"
+                      >
+                        "Summarize the key points"
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t border-darkBorder/50">
+                    <input
+                      type="text"
+                      placeholder="Ask a question about the document context..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      className="flex-1 bg-darkBg/60 border border-darkBorder focus:border-neonIndigo rounded-lg px-4 py-2.5 text-sm text-gray-200 placeholder:text-darkMuted outline-none transition-all"
+                      disabled={chatting}
+                    />
+                    <button
+                      type="submit"
+                      disabled={chatting || !chatInput.trim()}
+                      className="px-4 py-2.5 text-xs font-semibold text-white bg-neonIndigo hover:bg-neonIndigo/80 disabled:bg-neonIndigo/50 rounded-lg shadow-lg shadow-neonIndigo/10 flex items-center justify-center shrink-0 cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
                 </div>
 
-                {assistantSubTab === "chat" ? (
-                  <div className={`grid grid-cols-1 ${isAdvancedMode ? (sidebarOpen ? "xl:grid-cols-3 h-auto xl:h-[600px]" : "lg:grid-cols-3 h-auto lg:h-[600px]") : "h-auto xl:h-[600px]"} gap-6`}>
-                    {/* Left side: RAG Chat pane */}
-                    <div className={`${isAdvancedMode ? (sidebarOpen ? "xl:col-span-2 h-[550px] xl:h-full" : "lg:col-span-2 h-[550px] lg:h-full") : "col-span-1 h-[550px] xl:h-full"} bg-darkPanel/20 border border-darkBorder rounded-xl p-5 flex flex-col justify-between space-y-4`}>
-                      {/* Chat Message Stream */}
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 select-text">
-                        {messages.map((msg, index) => (
-                          <div
-                            key={index}
-                            className={`flex flex-col space-y-1 max-w-[85%] ${
-                              msg.sender === "user" ? "ml-auto items-end" : "mr-auto items-start"
-                            }`}
-                          >
-                            <div
-                              onClick={() => {
-                                if (msg.sender === "assistant") {
-                                  setSelectedMessageIdx(index);
-                                }
-                              }}
-                              className={`p-3.5 rounded-xl text-sm leading-relaxed ${
-                                msg.sender === "assistant" ? "cursor-pointer hover:border-darkBorder/100 transition-colors" : ""
-                              } ${
-                                selectedMessageIdx === index
-                                  ? "border-neonIndigo bg-darkPanel shadow-lg shadow-neonIndigo/5"
-                                  : ""
-                              } ${
-                                msg.sender === "user"
-                                  ? "bg-darkBorder/80 text-white rounded-br-none"
-                                  : "bg-darkPanel border border-darkBorder/80 text-gray-200 rounded-bl-none"
-                              }`}
-                            >
-                              {msg.text}
+                {/* Right side: Diagnostics Panel */}
+                {isAdvancedMode && (
+                  <div className="lg:col-span-1 h-[450px] lg:h-full bg-darkPanel/35 border border-darkBorder rounded-xl p-5 flex flex-col space-y-4 overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-darkBorder/40 pb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-neonIndigo uppercase tracking-wider">
+                        <Sliders className="w-3.5 h-3.5" />
+                        <span>RAG Diagnostics</span>
+                      </div>
+                      {selectedMessageIdx !== null && messages[selectedMessageIdx]?.metrics?.cache_hit && (
+                        <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 animate-pulse">
+                          <Zap className="w-2.5 h-2.5 animate-bounce" /> Cache Hit
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedMessageIdx !== null && messages[selectedMessageIdx]?.sender === "assistant" && messages[selectedMessageIdx]?.metrics ? (
+                      (() => {
+                        const activeMsg = messages[selectedMessageIdx];
+                        const metrics = activeMsg.metrics!;
+                        
+                        return (
+                          <div className="space-y-4 text-xs select-text">
+                            <div>
+                              <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-1">
+                                Query Rewriting
+                              </span>
+                              <div className="p-3 bg-darkBg/50 border border-darkBorder/50 rounded-lg space-y-1.5">
+                                <div>
+                                  <p className="text-[9px] text-darkMuted font-bold uppercase tracking-wider">User Query</p>
+                                  <p className="text-gray-300 italic">"{messages[selectedMessageIdx - 1]?.text || "Unknown"}"</p>
+                                </div>
+                                <div className="border-t border-darkBorder/20 my-1.5" />
+                                <div>
+                                  <p className="text-[9px] text-neonIndigo font-bold uppercase tracking-wider">Optimized Retrieval Query</p>
+                                  <p className="text-gray-200 font-semibold italic">"{activeMsg.query_rewritten || "Original query used"}"</p>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Display ground sources / citations for assistant answers */}
-                            {msg.sender === "assistant" && msg.sources && msg.sources.length > 0 && (
-                              <div className="w-full mt-1.5 space-y-1">
-                                <button
-                                  onClick={() => setExpandedSourceIdx(expandedSourceIdx === index ? null : index)}
-                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-neonIndigo hover:text-neonIndigo/80 uppercase tracking-wide transition-colors"
-                                >
-                                  <span>Sources & Citations ({msg.sources.length})</span>
-                                  {expandedSourceIdx === index ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                </button>
-
-                                {expandedSourceIdx === index && (
-                                  <div className="space-y-2 p-3 bg-darkBg/50 border border-darkBorder/50 rounded-xl mt-1 max-w-lg animate-fadeIn text-xs text-darkMuted leading-relaxed">
-                                    {msg.sources.map((src, sIdx) => (
-                                      <div key={sIdx} className="border-b border-darkBorder/30 pb-2 last:border-b-0 last:pb-0">
-                                        <div className="flex justify-between items-center mb-1">
-                                          <span className="font-semibold text-gray-300 truncate max-w-[180px]">{src.filename}</span>
-                                          <span className="text-[10px] text-neonTeal">
-                                            {isAdvancedMode ? `${(src.score * 100).toFixed(1)}% similarity` : "Highly Relevant Match"}
-                                          </span>
+                            <div>
+                              <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-2">
+                                Execution Latency
+                              </span>
+                              <div className="space-y-2 p-3 bg-darkBg/50 border border-darkBorder/50 rounded-lg">
+                                <div className="flex justify-between items-center text-xs font-semibold text-gray-200 border-b border-darkBorder/30 pb-1.5">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-neonTeal" /> Total Time
+                                  </span>
+                                  <span className="text-neonTeal">{metrics.total_time_ms} ms</span>
+                                </div>
+                                
+                                <div className="space-y-2 pt-1">
+                                  {[
+                                    { label: "Query Rewrite", val: metrics.rewrite_time_ms, color: "bg-purple-500" },
+                                    { label: "Embedding Gen", val: metrics.embedding_time_ms, color: "bg-blue-500" },
+                                    { label: "Vector DB Search", val: metrics.db_time_ms, color: "bg-emerald-500" },
+                                    { label: "Lexical Reranker", val: metrics.rerank_time_ms, color: "bg-yellow-500" },
+                                    { label: "LLM Generation", val: metrics.generation_time_ms, color: "bg-pink-500" }
+                                  ].map((item, i) => {
+                                    const percentage = metrics.total_time_ms > 0 ? (item.val / metrics.total_time_ms) * 100 : 0;
+                                    return (
+                                      <div key={i} className="space-y-0.5">
+                                        <div className="flex justify-between text-[10px] text-darkMuted">
+                                          <span>{item.label}</span>
+                                          <span>{item.val.toFixed(1)} ms</span>
                                         </div>
-                                        <p className="italic text-[11px] bg-darkPanel/35 p-2 rounded text-darkMuted select-text">
+                                        <div className="w-full bg-darkBorder/30 h-1.5 rounded overflow-hidden">
+                                          <div className={`h-full ${item.color}`} style={{ width: `${percentage}%` }} />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Source Chunks (Reranked) */}
+                            {activeMsg.sources && activeMsg.sources.length > 0 && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center border-t border-darkBorder/20 pt-3 mt-3">
+                                  <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider">
+                                    Top Reranked Chunks
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowRetrievedChunks(!showRetrievedChunks)}
+                                    className="text-[9px] font-bold uppercase tracking-wider text-neonTeal flex items-center gap-1 cursor-pointer"
+                                  >
+                                    {showRetrievedChunks ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    {showRetrievedChunks ? "Hide Chunks" : "Show Chunks"}
+                                  </button>
+                                </div>
+                                
+                                {showRetrievedChunks && (
+                                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                                    {activeMsg.sources.map((src, sIdx) => (
+                                      <div key={sIdx} className="p-2.5 bg-darkBg/50 border border-darkBorder/50 rounded-lg space-y-1">
+                                        <div className="flex justify-between items-center text-[10px] text-darkMuted">
+                                          <span className="font-semibold text-gray-300 truncate max-w-[130px]">{src.filename}</span>
+                                          <span className="text-neonTeal font-mono">{(src.score * 100).toFixed(1)}% match</span>
+                                        </div>
+                                        <p className="italic text-[10px] leading-normal bg-darkPanel/25 p-2 rounded border border-darkBorder/20 text-darkMuted select-text max-h-[60px] overflow-y-auto">
                                           "{src.chunk_text}"
                                         </p>
                                       </div>
@@ -798,378 +826,179 @@ function App() {
                                 )}
                               </div>
                             )}
-                          </div>
-                        ))}
 
-                        {/* Thinking Loader */}
-                        {chatting && (
-                          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-darkPanel border border-darkBorder/80 max-w-[200px] text-xs text-darkMuted mr-auto">
-                            <Loader2 className="w-3.5 h-3.5 text-neonIndigo animate-spin" />
-                            Retrieving context...
-                          </div>
-                        )}
-                        <div ref={chatEndRef} />
-                      </div>
-
-                      {/* Chat Suggestion Prompt Chips */}
-                      {messages.length === 1 && (
-                        <div className="flex flex-wrap gap-2 pt-2 border-t border-darkBorder/40">
-                          <button
-                            onClick={() => selectSuggestion("What is the invoice amount for Canada Post?")}
-                            className="px-3 py-1.5 text-[11px] font-medium text-darkMuted hover:text-white bg-darkBg/40 hover:bg-darkBorder/60 border border-darkBorder/60 rounded-full transition-all cursor-pointer"
-                          >
-                            "What is the invoice amount?"
-                          </button>
-                          <button
-                            onClick={() => selectSuggestion("Summarize the key points of the documents")}
-                            className="px-3 py-1.5 text-[11px] font-medium text-darkMuted hover:text-white bg-darkBg/40 hover:bg-darkBorder/60 border border-darkBorder/60 rounded-full transition-all cursor-pointer"
-                          >
-                            "Summarize the key points"
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Chat Input Field Form */}
-                      <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t border-darkBorder/50">
-                        <input
-                          type="text"
-                          placeholder="Ask a question about the document context..."
-                          value={chatInput}
-                          onChange={(e) => setChatInput(e.target.value)}
-                          className="flex-1 bg-darkBg/60 border border-darkBorder focus:border-neonIndigo rounded-lg px-4 py-2.5 text-sm text-gray-200 placeholder:text-darkMuted outline-none transition-all"
-                          disabled={chatting}
-                        />
-                        <button
-                          type="submit"
-                          disabled={chatting || !chatInput.trim()}
-                          className="px-4 py-2.5 text-xs font-semibold text-white bg-neonIndigo hover:bg-neonIndigo/80 disabled:bg-neonIndigo/50 rounded-lg shadow-lg shadow-neonIndigo/10 flex items-center justify-center shrink-0 cursor-pointer"
-                        >
-                          <Send className="w-4 h-4" />
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Right side: Retrieval & Latency Debugger Panel */}
-                    {isAdvancedMode && (
-                      <div className={`${sidebarOpen ? "xl:col-span-1 h-[450px] xl:h-full" : "lg:col-span-1 h-[450px] lg:h-full"} bg-darkPanel/35 border border-darkBorder rounded-xl p-5 flex flex-col space-y-4 overflow-y-auto`}>
-                        <div className="flex items-center justify-between border-b border-darkBorder/40 pb-2">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-neonIndigo uppercase tracking-wider">
-                            <Sliders className="w-3.5 h-3.5" />
-                            <span>RAG Diagnostics</span>
-                          </div>
-                          {selectedMessageIdx !== null && messages[selectedMessageIdx]?.metrics?.cache_hit && (
-                            <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 animate-pulse">
-                              <Zap className="w-2.5 h-2.5" /> Cache Hit
-                            </span>
-                          )}
-                        </div>
-
-                        {selectedMessageIdx !== null && messages[selectedMessageIdx]?.sender === "assistant" && messages[selectedMessageIdx]?.metrics ? (
-                          (() => {
-                            const activeMsg = messages[selectedMessageIdx];
-                            const metrics = activeMsg.metrics!;
-                            
-                            return (
-                              <div className="space-y-4 text-xs select-text">
-                                {/* Query Rewriting */}
-                                <div>
-                                  <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-1">
-                                    Query Rewriting
-                                  </span>
-                                  <div className="p-3 bg-darkBg/50 border border-darkBorder/50 rounded-lg space-y-1.5">
-                                    <div>
-                                      <p className="text-[9px] text-darkMuted font-bold uppercase tracking-wider">User Query</p>
-                                      <p className="text-gray-300 italic">"{messages[selectedMessageIdx - 1]?.text || "Unknown"}"</p>
-                                    </div>
-                                    <div className="border-t border-darkBorder/20 my-1.5" />
-                                    <div>
-                                      <p className="text-[9px] text-neonIndigo font-bold uppercase tracking-wider">Optimized Retrieval Query</p>
-                                      <p className="text-gray-200 font-semibold italic">"{activeMsg.query_rewritten || "Original query used"}"</p>
-                                    </div>
+                            {/* Aggregated System Metrics */}
+                            {systemMetrics && (
+                              <div className="space-y-2 border-t border-darkBorder/20 pt-3 mt-3">
+                                <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block">
+                                  System Pipeline Performance
+                                </span>
+                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono bg-darkBg/40 p-2.5 rounded-lg border border-darkBorder/30">
+                                  <div>
+                                    <span className="text-darkMuted block">Avg RAG Latency</span>
+                                    <span className="text-neonTeal font-bold">{systemMetrics.avg_query_time_ms} ms</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-darkMuted block">RAG Cache Rate</span>
+                                    <span className="text-neonIndigo font-bold">{systemMetrics.cache_hit_rate}%</span>
                                   </div>
                                 </div>
-
-                                {/* Latency Metrics */}
-                                <div>
-                                  <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block mb-2">
-                                    Execution Latency
-                                  </span>
-                                  <div className="space-y-2 p-3 bg-darkBg/50 border border-darkBorder/50 rounded-lg">
-                                    {/* Total Latency header */}
-                                    <div className="flex justify-between items-center text-xs font-semibold text-gray-200 border-b border-darkBorder/30 pb-1.5">
-                                      <span className="flex items-center gap-1">
-                                        <Clock className="w-3 h-3 text-neonTeal" /> Total Time
-                                      </span>
-                                      <span className="text-neonTeal">{metrics.total_time_ms} ms</span>
-                                    </div>
-                                    
-                                    {/* Breakdown Progress Bars */}
-                                    <div className="space-y-2 pt-1">
-                                      {[
-                                        { label: "Query Rewrite", val: metrics.rewrite_time_ms, color: "bg-purple-500" },
-                                        { label: "Embedding Gen", val: metrics.embedding_time_ms, color: "bg-blue-500" },
-                                        { label: "Vector DB Search", val: metrics.db_time_ms, color: "bg-emerald-500" },
-                                        { label: "Lexical Reranker", val: metrics.rerank_time_ms, color: "bg-yellow-500" },
-                                        { label: "LLM Generation", val: metrics.generation_time_ms, color: "bg-pink-500" }
-                                      ].map((item, i) => {
-                                        const percentage = metrics.total_time_ms > 0 ? (item.val / metrics.total_time_ms) * 100 : 0;
-                                        return (
-                                          <div key={i} className="space-y-0.5">
-                                            <div className="flex justify-between text-[10px] text-darkMuted">
-                                              <span>{item.label}</span>
-                                              <span>{item.val.toFixed(1)} ms</span>
-                                            </div>
-                                            <div className="w-full bg-darkBorder/30 h-1.5 rounded overflow-hidden">
-                                              <div className={`h-full ${item.color}`} style={{ width: `${percentage}%` }} />
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Source Chunks (Reranked) */}
-                                {activeMsg.sources && activeMsg.sources.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider">
-                                        Top Reranked Chunks
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowRetrievedChunks(!showRetrievedChunks)}
-                                        className="text-[9px] font-bold uppercase tracking-wider text-neonTeal flex items-center gap-0.5 cursor-pointer"
-                                      >
-                                        {showRetrievedChunks ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                        {showRetrievedChunks ? "Hide Chunks" : "Show Chunks"}
-                                      </button>
-                                    </div>
-                                    
-                                    {showRetrievedChunks && (
-                                      <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                                        {activeMsg.sources.map((src, sIdx) => (
-                                          <div key={sIdx} className="p-2.5 bg-darkBg/50 border border-darkBorder/50 rounded-lg space-y-1">
-                                            <div className="flex justify-between items-center text-[10px] text-darkMuted">
-                                              <span className="font-semibold text-gray-300 truncate max-w-[130px]">{src.filename}</span>
-                                              <span className="text-neonTeal font-mono">{(src.score * 100).toFixed(1)}% match</span>
-                                            </div>
-                                            <p className="italic text-[10px] leading-normal bg-darkPanel/25 p-2 rounded border border-darkBorder/20 text-darkMuted select-text max-h-[60px] overflow-y-auto">
-                                              "{src.chunk_text}"
-                                            </p>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                               </div>
-                            );
-                          })()
-                        ) : (
-                          <div className="flex flex-col items-center justify-center flex-1 text-center text-darkMuted p-4 select-none">
-                            <Sliders className="w-8 h-8 mb-2 stroke-1" />
-                            <p className="text-xs font-semibold text-gray-400">Retrieval Diagnostics</p>
-                            <p className="text-[10px] mt-1 max-w-[180px]">Select an assistant bubble message to view latency and search metrics.</p>
+                            )}
                           </div>
-                        )}
+                        );
+                      })()
+                    ) : (
+                      <div className="flex flex-col items-center justify-center flex-1 text-center text-darkMuted p-4 select-none">
+                        <Sliders className="w-8 h-8 mb-2 stroke-1" />
+                        <p className="text-xs font-semibold text-gray-400">Retrieval Diagnostics</p>
+                        <p className="text-[10px] mt-1 max-w-[180px]">Select an assistant bubble message to view metrics.</p>
                       </div>
                     )}
                   </div>
-                ) : (
-                  <div className="p-6 bg-darkPanel/20 border border-darkBorder rounded-xl space-y-6 animate-fadeIn">
-                    <div>
-                      <h2 className="text-base font-semibold text-gray-200 flex items-center gap-2">
-                        <Search className="w-4 h-4 text-neonTeal" />
-                        Semantic Search Engine
-                      </h2>
-                      <p className="text-xs text-darkMuted mt-0.5">
-                        Query document segments by semantic meaning using vectorized concept matching
-                      </p>
-                    </div>
-
-                    {/* Search Input Bar */}
-                    <form onSubmit={handleSearch} className="flex gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          placeholder="e.g., invoice payment details or document summary..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal/80 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-200 placeholder:text-darkMuted outline-none transition-all"
-                        />
-                        <Search className="w-4 h-4 text-darkMuted absolute left-3.5 top-3.5" />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={searching}
-                        className="px-5 py-2.5 text-xs font-semibold text-white bg-neonTeal hover:bg-neonTeal/90 border border-neonTeal/30 disabled:bg-sky-850 rounded-lg flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
-                      >
-                        {searching ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            Searching...
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-3.5 h-3.5" />
-                            Search
-                          </>
-                        )}
-                      </button>
-                    </form>
-
-                    {/* Search Result Snippets */}
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
-                      {searching ? (
-                        <div className="py-12 flex flex-col items-center justify-center gap-3">
-                          <Loader2 className="w-8 h-8 text-neonTeal animate-spin" />
-                          <p className="text-xs text-darkMuted">Searching database vectors...</p>
-                        </div>
-                      ) : searchError ? (
-                        <div className="p-4 bg-rose-950/20 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-medium">
-                          {searchError}
-                        </div>
-                      ) : searchResults.length > 0 ? (
-                        <div className="space-y-3 animate-fadeIn">
-                          <span className="text-[10px] font-bold text-darkMuted uppercase tracking-wider block">
-                            Top Semantic Matches
-                          </span>
-                          
-                          {searchResults.map((result, idx) => (
-                            <div
-                              key={idx}
-                              className="p-4 bg-darkBg/35 border border-darkBorder hover:border-neonTeal/40 rounded-xl space-y-2.5 transition-colors group relative"
-                            >
-                              <div className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-gray-300">{result.filename}</span>
-                                  {isAdvancedMode && <span className="text-[10px] text-darkMuted">Chunk #{result.chunk_index}</span>}
-                                </div>
-                                
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-semibold text-neonTeal">
-                                    {isAdvancedMode ? `${(result.similarity * 100).toFixed(1)}% match` : "Relevant Match"}
-                                  </span>
-                                  
-                                  <button
-                                    onClick={() => setSelectedDocId(result.document_id)}
-                                    className="p-1 rounded bg-darkBorder/60 hover:bg-neonTeal hover:text-darkBg text-gray-400 transition-colors cursor-pointer"
-                                    title="Open document workspace"
-                                  >
-                                    <ArrowUpRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <p className="text-xs text-darkMuted leading-relaxed italic bg-darkPanel/20 p-3 rounded-lg border border-darkBorder/50 font-sans group-hover:text-gray-200 transition-colors whitespace-pre-wrap select-text">
-                                "{result.content}"
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : searched ? (
-                        <div className="text-center py-12 border border-dashed border-darkBorder rounded-xl bg-darkPanel/10">
-                          <HelpCircle className="w-8 h-8 text-darkMuted mx-auto mb-3 animate-pulse" />
-                          <p className="text-gray-300 font-medium">No matches found</p>
-                          <p className="text-xs text-darkMuted mt-1">Make sure you have indexed your ingested documents first.</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
                 )}
               </div>
-            )}
-
-            {activeTab === "automation" && (
-              <div className="space-y-6 animate-fadeIn">
-                {/* Sub Tab Navigation for Business Automation */}
-                <div className="flex flex-wrap gap-2 border-b border-darkBorder/40 pb-2.5">
-                  <button
-                    onClick={() => setAutomationSubTab("finance")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      automationSubTab === "finance"
-                        ? "bg-neonTeal/10 text-neonTeal border border-neonTeal/20"
-                        : "text-darkMuted hover:text-gray-200"
-                    }`}
-                  >
-                    Finance Invoices
-                  </button>
-                  <button
-                    onClick={() => setAutomationSubTab("crm")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      automationSubTab === "crm"
-                        ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
-                        : "text-darkMuted hover:text-gray-200"
-                    }`}
-                  >
-                    CRM Lead Capture
-                  </button>
-                  <button
-                    onClick={() => setAutomationSubTab("workflows")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      automationSubTab === "workflows"
-                        ? "bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20"
-                        : "text-darkMuted hover:text-gray-200"
-                    }`}
-                  >
-                    Active Workflows
-                  </button>
+            ) : (
+              <div className="p-6 bg-darkPanel/20 border border-darkBorder rounded-xl space-y-6 animate-fadeIn">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-200 flex items-center gap-2">
+                    <Search className="w-4 h-4 text-neonTeal" />
+                    Semantic Search Engine
+                  </h2>
+                  <p className="text-xs text-darkMuted mt-0.5">
+                    Query document segments by semantic meaning using vectorized concept matching
+                  </p>
                 </div>
 
-                <div className="mt-4">
-                  {automationSubTab === "finance" && (
-                    <Dashboard backendUrl={BACKEND_URL} />
-                  )}
-                  {automationSubTab === "crm" && (
-                    <CrmDashboard backendUrl={BACKEND_URL} />
-                  )}
-                  {automationSubTab === "workflows" && (
-                    <WorkflowDashboard backendUrl={BACKEND_URL} />
-                  )}
+                <form onSubmit={handleSearch} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="e.g., invoice payment details or document summary..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-darkBg/60 border border-darkBorder focus:border-neonTeal/80 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-200 placeholder:text-darkMuted outline-none transition-all"
+                    />
+                    <Search className="w-4 h-4 text-darkMuted absolute left-3.5 top-3.5" />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={searching}
+                    className="px-5 py-2.5 text-xs font-semibold text-white bg-neonTeal hover:bg-neonTeal/90 border border-neonTeal/30 disabled:bg-sky-850 rounded-lg flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
+                  >
+                    {searching ? "Searching..." : "Search"}
+                  </button>
+                </form>
+
+                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+                  {searching ? (
+                    <div className="py-12 flex flex-col items-center justify-center gap-3">
+                      <Loader2 className="w-8 h-8 text-neonTeal animate-spin" />
+                      <p className="text-xs text-darkMuted">Searching database vectors...</p>
+                    </div>
+                  ) : searchError ? (
+                    <div className="p-4 bg-rose-950/20 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-medium">
+                      {searchError}
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <div className="space-y-3 animate-fadeIn">
+                      {searchResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 bg-darkBg/35 border border-darkBorder hover:border-neonTeal/40 rounded-xl space-y-2.5 transition-colors group relative"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-300">{result.filename}</span>
+                              {isAdvancedMode && <span className="text-[10px] text-darkMuted">Chunk #{result.chunk_index}</span>}
+                            </div>
+                            <span className="font-semibold text-neonTeal">
+                              {(result.similarity * 100).toFixed(1)}% match
+                            </span>
+                          </div>
+                          <p className="text-xs text-darkMuted leading-relaxed italic bg-darkPanel/20 p-3 rounded-lg border border-darkBorder/50 font-sans group-hover:text-gray-200 transition-colors whitespace-pre-wrap select-text">
+                            "{result.content}"
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : searched ? (
+                    <div className="text-center py-12 border border-dashed border-darkBorder rounded-xl bg-darkPanel/10">
+                      <HelpCircle className="w-8 h-8 text-darkMuted mx-auto mb-3 animate-pulse" />
+                      <p className="text-gray-300 font-medium">No matches found</p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
-
-            {activeTab === "agents" && (
-              <AgentDashboard backendUrl={BACKEND_URL} />
-            )}
-
-            {activeTab === "worker" && (
-              <WorkerMonitor />
-            )}
-
-            {activeTab === "observability" && (
-              <ObservabilityDashboard backendUrl={BACKEND_URL} />
-            )}
-
-            {activeTab === "review" && (
-              <ReviewQueueDashboard backendUrl={BACKEND_URL} />
-            )}
-
-            {activeTab === "events" && (
-              <EventDashboard />
-            )}
-
-            {activeTab === "notifications" && (
-              <NotificationDashboard />
-            )}
-
-            {activeTab === "auth" && (
-              <AuthDashboard />
-            )}
           </div>
-        </div>
-      </main>
-      )}
+        );
+      default:
+        return <div className="text-sm text-darkMuted">Tab content coming soon...</div>;
+    }
+  };
 
-      {/* Side preview Drawer */}
+  return (
+    <AppShell
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      isAdvancedMode={isAdvancedMode}
+      setIsAdvancedMode={setIsAdvancedMode}
+      apiConnected={apiConnected}
+      aiStatus={aiStatus}
+      currentUser={currentUser}
+      onLogout={handleLogout}
+    >
+      {/* Dynamic Module content area */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1">
+        
+        {/* Left Drawer component visible under Document Assistant Tab */}
+        {activeTab === "assistant" && sidebarOpen && (
+          <div className="lg:col-span-1 space-y-6 animate-fadeIn">
+            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-200">Upload PDF Document</h2>
+                <p className="text-xs text-darkMuted mt-0.5">Ingest files into pipeline database</p>
+              </div>
+              <FileUpload 
+                onUploadSuccess={fetchDocuments}
+                backendUrl="http://localhost:8000"
+                isAdvancedMode={isAdvancedMode}
+              />
+            </div>
+
+            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4 max-h-[380px] overflow-y-auto">
+              <h3 className="text-xs font-semibold text-darkMuted uppercase tracking-wider">
+                Document Library ({documents.length})
+              </h3>
+              <DocumentList
+                documents={documents}
+                trashDocuments={trashDocuments}
+                onSelectDocument={setSelectedDocId}
+                onTrashDocument={handleTrashDocument}
+                onRestoreDocument={handleRestoreDocument}
+                onDeleteDocument={handleDeleteDocument}
+                isLoading={loading}
+                sidebarOpen={true}
+                isCompact={true}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Center Dashboard Views */}
+        <div className={`${activeTab === "assistant" && sidebarOpen ? "lg:col-span-3" : "lg:col-span-4"} space-y-6 flex flex-col`}>
+          {renderTabContent()}
+        </div>
+      </div>
+
+      {/* Slide preview drawer */}
       <DocumentViewer
         documentId={selectedDocId}
         onClose={() => setSelectedDocId(null)}
-        backendUrl={BACKEND_URL}
+        backendUrl="http://localhost:8000"
       />
-    </div>
+    </AppShell>
   );
 }
 

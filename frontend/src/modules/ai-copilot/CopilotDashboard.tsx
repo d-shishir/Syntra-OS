@@ -1,9 +1,33 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  Send, Sparkles, AlertTriangle, Shield, Check, Clock, 
-  Workflow, Users, FileText, CheckCircle2, ShieldAlert, 
-  Activity, Search, Terminal, ArrowUpRight, HelpCircle, Loader2
+import {
+  Send, Sparkles, AlertTriangle, Shield, Check, Clock,
+  Workflow, Users, FileText, CheckCircle2, ShieldAlert,
+  Activity, Search, Terminal, ArrowUpRight, HelpCircle, Loader2, ChevronRight
 } from "lucide-react";
+
+// Terminal slash-command palette
+const SLASH_COMMANDS: { cmd: string; desc: string; mode: "ask" | "action" | "plan" | "debug" }[] = [
+  { cmd: "/list workflows",         desc: "List recent workflow executions",              mode: "ask" },
+  { cmd: "/run workflow",           desc: "Execute a workflow by goal description",       mode: "action" },
+  { cmd: "/list agents",            desc: "Show all active agents and their state",       mode: "ask" },
+  { cmd: "/pending approvals",      desc: "Fetch pending approval requests",              mode: "ask" },
+  { cmd: "/approve",               desc: "/approve <request_id> — Authorize a review",   mode: "action" },
+  { cmd: "/search",                desc: "/search <query> — Semantic document search",   mode: "ask" },
+  { cmd: "/finance summary",        desc: "Generate a finance KPI snapshot",              mode: "ask" },
+  { cmd: "/anomaly report",         desc: "Detect payroll and invoice anomalies",         mode: "ask" },
+  { cmd: "/crm leads",              desc: "Show CRM lead pipeline overview",              mode: "ask" },
+  { cmd: "/health check",           desc: "Run system integrity diagnostics",             mode: "debug" },
+  { cmd: "/plan",                  desc: "/plan <goal> — Build an autonomous agent plan",mode: "plan" },
+  { cmd: "/debug last run",         desc: "Trace the most recent failed execution",       mode: "debug" },
+  { cmd: "/graph impact",           desc: "Show downstream impact of a knowledge entity", mode: "ask" },
+];
+
+const MODE_COLOR: Record<string, string> = {
+  ask:    "text-neonTeal border-neonTeal/30 bg-neonTeal/5",
+  action: "text-neonIndigo border-neonIndigo/30 bg-neonIndigo/5",
+  plan:   "text-amber-400 border-amber-500/30 bg-amber-500/5",
+  debug:  "text-rose-400 border-rose-500/30 bg-rose-500/5",
+};
 
 interface Message {
   sender: "user" | "assistant";
@@ -46,6 +70,15 @@ export const CopilotDashboard: React.FC = () => {
   const [context, setContext] = useState<ContextInfo | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [showCmdSuggestions, setShowCmdSuggestions] = useState(false);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(0);
+
+  const filteredCmds = input.startsWith("/")
+    ? SLASH_COMMANDS.filter(c => c.cmd.startsWith(input) || c.desc.toLowerCase().includes(input.slice(1).toLowerCase()))
+    : showCmdSuggestions && input === ""
+    ? SLASH_COMMANDS
+    : [];
 
   // Load diagnostics context
   const fetchContext = useCallback(async () => {
@@ -428,25 +461,83 @@ export const CopilotDashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* Input Bar */}
-        <form onSubmit={onSubmit} className="p-4 bg-darkPanel/30 border-t border-darkBorder/60 flex gap-3">
-          <input
-            type="text"
-            placeholder="Type standard command or prompt..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={loading}
-            className="flex-1 bg-darkBg border border-darkBorder rounded-lg px-4 py-2 text-xs text-gray-200 focus:outline-none focus:border-neonIndigo disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 text-xs"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>Execute</span>
-          </button>
-        </form>
+        {/* Input Bar with autocomplete */}
+        <div className="relative">
+          {/* Autocomplete dropdown */}
+          {(showCmdSuggestions || input.startsWith("/")) && filteredCmds.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 bg-darkPanel border border-darkBorder rounded-xl shadow-xl z-30 overflow-hidden max-h-[260px] overflow-y-auto">
+              <div className="px-3 py-1.5 border-b border-darkBorder/40 flex items-center justify-between">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-darkMuted flex items-center gap-1">
+                  <Terminal className="w-3 h-3" /> Command Palette ({filteredCmds.length})
+                </span>
+                <span className="text-[9px] font-mono text-darkMuted">Tab to complete · ↑↓ navigate</span>
+              </div>
+              {filteredCmds.map((cmd, idx) => (
+                <button
+                  key={cmd.cmd}
+                  type="button"
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    setInput(cmd.cmd + " ");
+                    setShowCmdSuggestions(false);
+                    inputRef.current?.focus();
+                  }}
+                  className={`w-full px-3 py-2.5 flex items-center justify-between gap-3 text-left cursor-pointer transition-colors ${
+                    activeSuggestionIdx === idx ? "bg-neonIndigo/8 border-l-2 border-neonIndigo" : "hover:bg-darkBg/40 border-l-2 border-transparent"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ChevronRight className="w-3 h-3 text-darkMuted shrink-0" />
+                    <span className="text-[11px] font-mono text-gray-200 font-semibold shrink-0">{cmd.cmd}</span>
+                    <span className="text-[10px] text-darkMuted truncate">— {cmd.desc}</span>
+                  </div>
+                  <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded border shrink-0 ${MODE_COLOR[cmd.mode]}`}>{cmd.mode}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <form onSubmit={onSubmit} className="p-4 bg-darkPanel/30 border-t border-darkBorder/60 flex gap-3">
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder='Type / for commands, or natural language…'
+              value={input}
+              onChange={e => {
+                setInput(e.target.value);
+                setActiveSuggestionIdx(0);
+              }}
+              onFocus={() => setShowCmdSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowCmdSuggestions(false), 150)}
+              onKeyDown={e => {
+                if (filteredCmds.length > 0) {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setActiveSuggestionIdx(i => Math.min(i + 1, filteredCmds.length - 1)); }
+                  if (e.key === "ArrowUp")   { e.preventDefault(); setActiveSuggestionIdx(i => Math.max(i - 1, 0)); }
+                  if (e.key === "Tab" || e.key === "Enter" && input.startsWith("/")) {
+                    e.preventDefault();
+                    const chosen = filteredCmds[activeSuggestionIdx];
+                    if (chosen) {
+                      setInput(chosen.cmd + " ");
+                      setShowCmdSuggestions(false);
+                    }
+                    return;
+                  }
+                  if (e.key === "Escape") setShowCmdSuggestions(false);
+                }
+              }}
+              disabled={loading}
+              className="flex-1 bg-darkBg border border-darkBorder rounded-lg px-4 py-2 text-xs text-gray-200 focus:outline-none focus:border-neonIndigo disabled:opacity-50 font-mono"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 text-xs"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Execute</span>
+            </button>
+          </form>
+        </div>
 
       </div>
 
