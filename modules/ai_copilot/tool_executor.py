@@ -21,8 +21,23 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
             workflow_id = entities.get("workflow_id")
             input_context = entities.get("input_context") or {}
             
-            from modules.workflow_engine.workflow_manager import trigger_workflow_run
-            run = trigger_workflow_run(db, workflow_id, input_context)
+            from modules.workflow_engine.workflow_manager import workflow_manager as wf_mgr
+            
+            # Check if workflow_id is a real UUID referencing an existing workflow
+            existing_wf = None
+            try:
+                import uuid as _uuid
+                _uuid.UUID(workflow_id)  # Validate UUID format
+                existing_wf = wf_mgr.get_workflow(db, workflow_id)
+            except (ValueError, TypeError):
+                pass
+            
+            if existing_wf:
+                run = wf_mgr.trigger_workflow(db, workflow_id, input_context)
+            else:
+                # Treat workflow_id as a semantic goal/name and use AI planner
+                goal = workflow_id.replace("_", " ").title() if workflow_id else "Standard Document Review"
+                run = wf_mgr.plan_and_execute_workflow(db, goal, input_context)
             
             # Post event
             from modules.event_system.event_bus import publish_event
@@ -125,7 +140,7 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
             reviewer_name = current_user.name if current_user else "Admin Director"
             comments = entities.get("comments") or "Approved via AI Copilot command."
             
-            from modules.human_review_system.approval_engine import approve_request, reject_request
+            from modules.human_review_system.approval_engine import approval_engine
             
             if req_id_str == "all_low_risk":
                 # Find and approve all pending low-risk items
@@ -134,7 +149,7 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                     ApprovalRequest.risk_level == "low"
                 ).all()
                 for r in requests:
-                    approve_request(r.id, reviewer_name, comments, db)
+                    approval_engine.approve_request(r.id, reviewer_name, comments, db)
                 return {
                     "success": True,
                     "message": f"Approved all {len(requests)} pending low-risk items in review queue.",
@@ -148,7 +163,7 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                     raise ValueError("Invalid approval request ID format.")
                 
                 if action == "approve":
-                    req = approve_request(req_uuid, reviewer_name, comments, db)
+                    req = approval_engine.approve_request(req_uuid, reviewer_name, comments, db)
                     return {
                         "success": True,
                         "message": f"Successfully approved review request {req_uuid}.",
@@ -156,7 +171,7 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
                         "type": "approval_detail"
                     }
                 else: # reject
-                    req = reject_request(req_uuid, reviewer_name, comments, db)
+                    req = approval_engine.reject_request(req_uuid, reviewer_name, comments, db)
                     return {
                         "success": True,
                         "message": f"Rejected review request {req_uuid}.",
@@ -170,12 +185,12 @@ def execute_tool(intent: str, entities: dict, db: Session, current_user = None) 
             
             # Delegate to multi-agent task coordinator
             from modules.multi_agent_system.task_coordinator import task_coordinator
-            run = task_coordinator.coordinate_and_execute(db, f"Agent swarm operation: {task_desc}")
+            result = task_coordinator.run_autonomous_workflow(f"Agent swarm operation: {task_desc}", {}, db)
             
             return {
-                "success": True,
-                "message": f"Delegated analysis to AI Swarm Coordinator (Swarm run: {run.id})",
-                "data": run.to_dict(),
+                "success": result.get("status") == "success",
+                "message": f"Delegated analysis to AI Swarm Coordinator (Swarm run: {result.get('run_id')})",
+                "data": result,
                 "type": "agent_run"
             }
 

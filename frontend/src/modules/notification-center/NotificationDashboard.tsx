@@ -104,6 +104,12 @@ export const NotificationDashboard: React.FC = () => {
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "—";
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString("en-US", { hour12: false }) + " " + date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
   const fetchNotificationLogs = useCallback(async () => {
     try {
       const [notifsRes, historyRes, prefRes] = await Promise.all([

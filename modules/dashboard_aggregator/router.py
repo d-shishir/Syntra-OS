@@ -120,8 +120,24 @@ def execute_quick_action(action_payload: dict, db: Session = Depends(get_db), cu
         input_data = params.get("input_context") or {}
         
         try:
-            from modules.workflow_engine.workflow_manager import trigger_workflow_run
-            run = trigger_workflow_run(db, workflow_id, input_data)
+            from modules.workflow_engine.workflow_manager import workflow_manager as wf_mgr
+            
+            # Check if workflow_id is a real UUID for an existing workflow
+            existing_wf = None
+            if workflow_id:
+                try:
+                    import uuid
+                    uuid.UUID(workflow_id)
+                    existing_wf = wf_mgr.get_workflow(db, workflow_id)
+                except (ValueError, TypeError):
+                    pass
+            
+            if existing_wf:
+                run = wf_mgr.trigger_workflow(db, workflow_id, input_data)
+            else:
+                goal = workflow_id.replace('_', ' ').title() if workflow_id else 'Standard Document Review'
+                run = wf_mgr.plan_and_execute_workflow(db, goal, input_data)
+            
             return {"status": "success", "message": f"Workflow run {run.id} started successfully.", "data": run.to_dict()}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}")
@@ -161,8 +177,8 @@ def execute_quick_action(action_payload: dict, db: Session = Depends(get_db), cu
         comments = params.get("comments") or "Approved via Quick Actions control center."
         
         try:
-            from modules.human_review_system.approval_engine import approve_request
-            req = approve_request(db, request_id, reviewer_name, comments)
+            from modules.human_review_system.approval_engine import approval_engine
+            req = approval_engine.approve_request(request_id, reviewer_name, comments, db)
             return {"status": "success", "message": f"Request {request_id} approved.", "data": req.to_dict()}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Approval action failed: {str(e)}")

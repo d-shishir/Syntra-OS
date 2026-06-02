@@ -46,6 +46,12 @@ from modules.human_review_system.router import router as reviews_router
 
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
+try:
+    from backend.app.database import Base as BackendBase
+    BackendBase.metadata.create_all(bind=engine)
+except Exception as e:
+    logging.getLogger(__name__).warning(f"Could not initialize backend.app.database tables: {e}")
+
 
 # Migration: Add is_deleted to documents table if it doesn't exist
 from sqlalchemy import text
