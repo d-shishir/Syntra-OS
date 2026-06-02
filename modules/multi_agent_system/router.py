@@ -7,6 +7,8 @@ from modules.multi_agent_system.agent_registry import agent_registry
 from modules.multi_agent_system.communication_bus import communication_bus
 from modules.multi_agent_system.task_coordinator import task_coordinator
 from modules.multi_agent_system.models import AgentWorkflowRun, AgentLog
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
 
 router = APIRouter()
 
@@ -26,7 +28,8 @@ class RegisterAgentRequest(BaseModel):
 def run_agent_task(
     request: RunTaskRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Kicks off an autonomous multi-agent operational task loop in the background.
@@ -45,14 +48,14 @@ def run_agent_task(
         )
 
 @router.get("")
-def get_agents():
+def get_agents(current_user: User = Depends(get_current_user)):
     """
     Lists all registered agents, roles, and capabilities.
     """
     return agent_registry.list_agents()
 
 @router.post("/register")
-def register_custom_agent(request: RegisterAgentRequest):
+def register_custom_agent(request: RegisterAgentRequest, current_user: User = Depends(get_current_user)):
     """
     Registers a custom agent with specified capabilities.
     """
@@ -67,7 +70,7 @@ def register_custom_agent(request: RegisterAgentRequest):
     return {"status": "success", "message": f"Successfully registered custom agent '{request.key}'"}
 
 @router.get("/logs")
-def get_agent_logs(run_id: Optional[str] = None, db: Session = Depends(get_db)):
+def get_agent_logs(run_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Fetches communication logs for a specific run, or all logs.
     """
@@ -84,7 +87,7 @@ def get_agent_logs(run_id: Optional[str] = None, db: Session = Depends(get_db)):
         )
 
 @router.get("/workflows")
-def get_agent_workflows(db: Session = Depends(get_db)):
+def get_agent_workflows(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Retrieves all multi-agent workflow executions and plans history.
     """

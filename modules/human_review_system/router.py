@@ -9,6 +9,9 @@ from .approval_engine import approval_engine
 from .review_queue import review_queue
 from .escalation_manager import escalation_manager
 from app.services.rag_pipeline import ask_question_rag
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
+from fastapi import status
 
 router = APIRouter()
 
@@ -20,16 +23,25 @@ class ReassignRequest(BaseModel):
     reviewer_name: str
     performed_by: Optional[str] = "system"
 
+def check_review_access(user: User):
+    if user.role not in ["admin", "finance_manager", "compliance_officer", "operations_manager", "reviewer"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You lack human review permissions."
+        )
+
 @router.get("")
 def get_all_reviews(
     department: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
     limit: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Retrieves review items in the queue with optional filters.
     """
+    check_review_access(current_user)
     try:
         requests = review_queue.list_requests(db, department, status_filter, limit)
         return [r.to_dict() for r in requests]
@@ -43,11 +55,13 @@ def get_all_reviews(
 def get_audit_trails(
     approval_request_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Returns audit trail records for compliance analysis.
     """
+    check_review_access(current_user)
     try:
         query = db.query(ApprovalAuditTrail)
         if approval_request_id:
@@ -65,11 +79,13 @@ def get_audit_trails(
 def approve_request(
     id: str,
     payload: ReviewDecisionRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Approves a gated task and resumes workflow execution.
     """
+    check_review_access(current_user)
     try:
         req_id = uuid.UUID(id)
         req = approval_engine.approve_request(req_id, payload.reviewer_name, payload.comments, db)
@@ -83,11 +99,13 @@ def approve_request(
 def reject_request(
     id: str,
     payload: ReviewDecisionRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Rejects the request, stopping the linked workflow execution.
     """
+    check_review_access(current_user)
     try:
         req_id = uuid.UUID(id)
         req = approval_engine.reject_request(req_id, payload.reviewer_name, payload.comments, db)
@@ -101,11 +119,13 @@ def reject_request(
 def escalate_request(
     id: str,
     payload: ReviewDecisionRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Escalates approval review, raising priorities and reassigning to executives.
     """
+    check_review_access(current_user)
     try:
         req_id = uuid.UUID(id)
         req = escalation_manager.escalate(req_id, db, payload.reviewer_name, payload.comments)
@@ -119,11 +139,13 @@ def escalate_request(
 def reassign_request(
     id: str,
     payload: ReassignRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Manually reassigns the item to a different human reviewer.
     """
+    check_review_access(current_user)
     try:
         req_id = uuid.UUID(id)
         req = review_queue.assign_request(req_id, payload.reviewer_name, db, payload.performed_by)
@@ -134,7 +156,8 @@ def reassign_request(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/risk-analysis/{id}")
-def get_risk_analysis_with_rag(id: str, db: Session = Depends(get_db)):
+def get_risk_analysis_with_rag(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    check_review_access(current_user)
     """
     Generates AI explanations and queries RAG to find related policy guidelines
     to aid reviewers.

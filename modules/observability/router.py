@@ -5,6 +5,8 @@ from typing import List, Optional, Dict, Any
 from app.database import get_db
 from .models import AITrace, TraceStep, SystemErrorLog, StructuredLog, RAGQualityMetric, ToolCallMetric
 from .metrics_collector import metrics_collector
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
 
 router = APIRouter()
 
@@ -13,7 +15,8 @@ def get_all_traces(
     module: Optional[str] = Query(None, description="Filter by module"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     limit: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Lists recent execution traces with optional filters.
@@ -34,7 +37,7 @@ def get_all_traces(
         )
 
 @router.get("/traces/{trace_id}")
-def get_trace_details(trace_id: str, db: Session = Depends(get_db)):
+def get_trace_details(trace_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Retrieves deep trace profiling logs, steps, metrics, tool calls, and errors.
     """
@@ -69,7 +72,7 @@ def get_trace_details(trace_id: str, db: Session = Depends(get_db)):
     }
 
 @router.get("/metrics/system")
-def get_system_analytics(db: Session = Depends(get_db)):
+def get_system_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Compiles system success ratios, token usages, latencies, and tool failures.
     """
@@ -82,7 +85,7 @@ def get_system_analytics(db: Session = Depends(get_db)):
         )
 
 @router.get("/errors")
-def get_system_errors(limit: int = Query(50, ge=1, le=100), db: Session = Depends(get_db)):
+def get_system_errors(limit: int = Query(50, ge=1, le=100), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Lists caught system crash tracebacks and modules.
     """
@@ -99,7 +102,8 @@ def get_system_errors(limit: int = Query(50, ge=1, le=100), db: Session = Depend
 def get_all_logs(
     severity: Optional[str] = Query(None, description="INFO, WARNING, ERROR, DEBUG"),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Retrieves latest structured logs from database.

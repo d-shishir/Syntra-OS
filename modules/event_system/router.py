@@ -9,12 +9,14 @@ from app.database import get_db
 from modules.event_system.models import EventRecord, EventJob, DeadLetterJob
 from modules.event_system.event_bus import publish_event
 from modules.event_system.dead_letter_queue import retry_dlq_job
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/publish", status_code=status.HTTP_201_CREATED)
-def api_publish_event(payload: dict, db: Session = Depends(get_db)):
+def api_publish_event(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     event_type = payload.get("event_type")
     source_module = payload.get("source_module")
     event_payload = payload.get("payload", {})
@@ -37,17 +39,17 @@ def api_publish_event(payload: dict, db: Session = Depends(get_db)):
         )
 
 @router.get("", response_model=list[dict])
-def get_events(limit: int = 50, db: Session = Depends(get_db)):
+def get_events(limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     events = db.query(EventRecord).order_by(EventRecord.timestamp.desc()).limit(limit).all()
     return [e.to_dict() for e in events]
 
 @router.get("/jobs", response_model=list[dict])
-def get_jobs(limit: int = 50, db: Session = Depends(get_db)):
+def get_jobs(limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     jobs = db.query(EventJob).order_by(EventJob.created_at.desc()).limit(limit).all()
     return [j.to_dict() for j in jobs]
 
 @router.get("/jobs/{job_id}", response_model=dict)
-def get_job(job_id: str, db: Session = Depends(get_db)):
+def get_job(job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     import uuid
     try:
         job_uuid = uuid.UUID(job_id)
@@ -60,7 +62,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     return job.to_dict()
 
 @router.post("/jobs/{job_id}/retry", response_model=dict)
-def retry_job(job_id: str, db: Session = Depends(get_db)):
+def retry_job(job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     import uuid
     try:
         job_uuid = uuid.UUID(job_id)
@@ -93,12 +95,12 @@ def retry_job(job_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "message": "Job re-enqueued successfully", "job": job.to_dict()}
 
 @router.get("/dead-letter-queue", response_model=list[dict])
-def get_dead_letter_queue(limit: int = 50, db: Session = Depends(get_db)):
+def get_dead_letter_queue(limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     dlq_jobs = db.query(DeadLetterJob).order_by(DeadLetterJob.failed_at.desc()).limit(limit).all()
     return [d.to_dict() for d in dlq_jobs]
 
 @router.get("/stream")
-async def event_stream(db: Session = Depends(get_db)):
+async def event_stream(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     SSE stream of live operational metrics, events, and jobs.
     """

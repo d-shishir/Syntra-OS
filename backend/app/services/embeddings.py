@@ -31,7 +31,7 @@ def generate_mock_embedding(text: str) -> list[float]:
     It splits the text into lowercase words, seeds random number generators,
     and normalizes the vector.
     """
-    dimensions = 768
+    dimensions = getattr(settings, "EMBEDDING_DIM", 1536)
     vector = [0.0] * dimensions
     
     # Clean text and split to tokens

@@ -1,9 +1,11 @@
 import logging
+from sqlalchemy.orm import Session
 from backend.app.config import settings
+from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)
 
-def generate_copilot_response(intent: str, execution_result: dict, context: dict) -> dict:
+def generate_copilot_response(intent: str, execution_result: dict, context: dict, db: Session = None) -> dict:
     """
     Formulates a descriptive, natural language answer based on tool outputs.
     """
@@ -48,6 +50,15 @@ def generate_copilot_response(intent: str, execution_result: dict, context: dict
                 temperature=0.3
             )
             text_response = res.choices[0].message.content.strip()
+            
+            # Record token usage
+            if db:
+                try:
+                    approx_tokens = (len(prompt) + len(text_response)) // 4
+                    ai_call_tracker.record_token_usage(approx_tokens, "copilot_response_generator", db)
+                except Exception as tracker_err:
+                    logger.warning(f"Failed to record token usage in generate_copilot_response: {tracker_err}")
+
             return {
                 "text": text_response,
                 "type": res_type,

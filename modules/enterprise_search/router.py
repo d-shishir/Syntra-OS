@@ -46,14 +46,14 @@ def unified_search(payload: Dict[str, Any], db: Session = Depends(get_db), user:
     return search_engine.search(db, query, user_role=role, user_department=dept)
 
 @router.get("/suggestions")
-def get_suggestions(prefix: str = "", db: Session = Depends(get_db)):
+def get_suggestions(prefix: str = "", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """
     Autocomplete entity-relationship suggestions.
     """
     return autocomplete_engine.get_suggestions(db, prefix)
 
 @router.get("/analytics")
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """
     Search usage, latency, and index synchronization stats.
     """

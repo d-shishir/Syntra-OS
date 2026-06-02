@@ -98,11 +98,17 @@ def run_tests():
             priority="medium"
         )
 
-        # Check if crm notification was created for sales_user
-        crm_notif = db.query(Notification).filter(
-            Notification.type == "lead_created",
-            Notification.recipient == "sales_user"
-        ).first()
+        # Check if crm notification was created for sales_user (with retry to allow background dispatcher to execute)
+        import time
+        crm_notif = None
+        for _ in range(50):
+            crm_notif = db.query(Notification).filter(
+                Notification.type == "lead_created",
+                Notification.recipient == "sales_user"
+            ).first()
+            if crm_notif:
+                break
+            time.sleep(0.1)
         
         assert crm_notif is not None
         assert "Elon Musk" in crm_notif.message

@@ -6,6 +6,7 @@ from .lead_service import LeadService
 from .crm_workflows import enrichment_engine, scoring_engine, outreach_generator
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any, Optional
+from modules.auth_system.access_policies import PermissionGuard
 
 router = APIRouter()
 lead_service = LeadService()
@@ -24,7 +25,7 @@ class LeadStatusUpdateSchema(BaseModel):
     status: str
 
 @router.post("/leads/create", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-def create_lead(payload: LeadCreateSchema, db: Session = Depends(get_db)):
+def create_lead(payload: LeadCreateSchema, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "write"))):
     """
     Creates a lead and triggers onboarding pipeline context workflows (enrich, score, outreach).
     """
@@ -59,7 +60,8 @@ def create_lead(payload: LeadCreateSchema, db: Session = Depends(get_db)):
 def list_leads(
     status: Optional[str] = None,
     min_score: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(PermissionGuard("crm_records", "read"))
 ):
     """
     List leads with optional filtering options.
@@ -74,7 +76,7 @@ def list_leads(
         )
 
 @router.get("/leads/search", response_model=List[Dict[str, Any]])
-def search_leads(query: str, db: Session = Depends(get_db)):
+def search_leads(query: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "read"))):
     """
     Search leads by matching keyword on name, company, email or industry.
     """
@@ -95,7 +97,7 @@ def search_leads(query: str, db: Session = Depends(get_db)):
     return [l.to_dict() for l in leads]
 
 @router.get("/leads/{lead_id}", response_model=Dict[str, Any])
-def get_lead_details(lead_id: str, db: Session = Depends(get_db)):
+def get_lead_details(lead_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "read"))):
     lead = lead_service.get_lead(db, lead_id)
     if not lead:
         raise HTTPException(
@@ -105,7 +107,7 @@ def get_lead_details(lead_id: str, db: Session = Depends(get_db)):
     return lead.to_dict()
 
 @router.post("/leads/enrich/{lead_id}", response_model=Dict[str, Any])
-def enrich_lead(lead_id: str, db: Session = Depends(get_db)):
+def enrich_lead(lead_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "write"))):
     """
     Manually triggers AI RAG lead enrichment.
     """
@@ -131,7 +133,7 @@ def enrich_lead(lead_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/leads/score/{lead_id}", response_model=Dict[str, Any])
-def score_lead(lead_id: str, db: Session = Depends(get_db)):
+def score_lead(lead_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "write"))):
     """
     Manually triggers AI lead quality scoring.
     """
@@ -155,7 +157,7 @@ def score_lead(lead_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/leads/generate-outreach/{lead_id}", response_model=Dict[str, Any])
-def generate_outreach(lead_id: str, db: Session = Depends(get_db)):
+def generate_outreach(lead_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "write"))):
     """
     Manually triggers customized sales outreach templates copywriting.
     """
@@ -178,7 +180,7 @@ def generate_outreach(lead_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/leads/{lead_id}/status", response_model=Dict[str, Any])
-def update_lead_status(lead_id: str, payload: LeadStatusUpdateSchema, db: Session = Depends(get_db)):
+def update_lead_status(lead_id: str, payload: LeadStatusUpdateSchema, db: Session = Depends(get_db), _ = Depends(PermissionGuard("crm_records", "write"))):
     """
     Update lead stage status.
     """

@@ -5,6 +5,7 @@ from .workflow_logger import WorkflowLogger
 from .task_router import TaskRouter
 from .retry_handler import RetryHandler
 from .models import WorkflowRun
+from modules.observability import track_latency
 
 logger = logging.getLogger(__name__)
 
@@ -13,19 +14,27 @@ class WorkflowExecutor:
         self.router = TaskRouter()
         self.retry_handler = RetryHandler(max_retries=max_retries, backoff_factor=backoff_factor)
 
+    @track_latency("workflow_execution", module="workflow_engine")
     def execute_workflow(
         self,
         db: Session,
         workflow_name: str,
         steps: list[str],
         input_context: dict,
-        workflow_id: str | None = None
+        workflow_id: str | None = None,
+        run_id: str | None = None
     ) -> WorkflowRun:
         """
         Executes a workflow pipeline step-by-step.
         """
         # 1. Initialize the run log
-        run = WorkflowLogger.start_run(db, workflow_name, workflow_id, input_context)
+        if run_id:
+            import uuid
+            run = db.query(WorkflowRun).filter(WorkflowRun.id == uuid.UUID(run_id)).first()
+            if not run:
+                run = WorkflowLogger.start_run(db, workflow_name, workflow_id, input_context)
+        else:
+            run = WorkflowLogger.start_run(db, workflow_name, workflow_id, input_context)
         context = input_context.copy()
         
         logger.info(f"Starting execution of workflow '{workflow_name}' (Run ID: {run.id})")
@@ -161,6 +170,7 @@ class WorkflowExecutor:
                 pass
             return run
 
+    @track_latency("workflow_resume", module="workflow_engine")
     def resume_workflow(self, db: Session, run_id: str) -> WorkflowRun:
         """
         Resumes a paused workflow run, executing the remaining steps.

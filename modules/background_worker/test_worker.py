@@ -1,9 +1,19 @@
 import time
+import sys
+import os
+
+# Resolve paths
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+backend_path = os.path.join(root_path, "backend")
+for p in [root_path, backend_path]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.app.database import Base
-from .models import BackgroundTaskJob
-from .worker_engine import register_handler, _run_job, start_worker, stop_worker
+from app.database import Base
+from modules.background_worker.models import BackgroundTaskJob
+from modules.background_worker.worker_engine import register_handler, _run_job, start_worker, stop_worker
 
 # Use temporary memory database for tests
 DATABASE_URL = "sqlite:///:memory:"
@@ -93,3 +103,14 @@ def test_task_retry_and_failure_flow():
     assert "Simulated task exception" in job.error_message
     assert fail_runs == 2
     db.close()
+
+if __name__ == "__main__":
+    teardown = setup_db()
+    try:
+        print("Running test_task_success_execution...")
+        test_task_success_execution()
+        print("Running test_task_retry_and_failure_flow...")
+        test_task_retry_and_failure_flow()
+        print("All worker tests passed successfully!")
+    finally:
+        teardown()

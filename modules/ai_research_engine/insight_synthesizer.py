@@ -1,6 +1,8 @@
 import logging
 from typing import List, Dict, Any
+from sqlalchemy.orm import Session
 from backend.app.config import settings
+from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +10,7 @@ class InsightSynthesizer:
     def __init__(self):
         pass
 
-    def synthesize(self, goal: str, collected_evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def synthesize(self, goal: str, collected_evidence: List[Dict[str, Any]], db: Session = None) -> Dict[str, Any]:
         """
         Processes multi-source records to extract patterns, anomalies, risks, and options.
         """
@@ -50,6 +52,15 @@ class InsightSynthesizer:
                     content = content.split("```")[1]
                     if content.startswith("json"):
                         content = content[4:]
+                
+                # Record token usage
+                if db:
+                    try:
+                        approx_tokens = (len(system_prompt) + len(goal) + len(evidence_summary) + len(content)) // 4
+                        ai_call_tracker.record_token_usage(approx_tokens, "research_insight_synthesis", db)
+                    except Exception as tracker_err:
+                        logger.warning(f"Failed to record token usage in synthesize: {tracker_err}")
+
                 return json.loads(content.strip())
             except Exception as e:
                 logger.warning(f"LLM synthesis failed. Falling back: {str(e)}")

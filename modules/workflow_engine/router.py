@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
 from .models import Workflow, WorkflowRun, StepExecutionLog
 from .workflow_manager import workflow_manager
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from modules.auth_system.access_policies import PermissionGuard
 
 router = APIRouter()
 
@@ -20,7 +21,7 @@ class WorkflowRunRequestSchema(BaseModel):
     input_context: Dict[str, Any] = {}
 
 @router.post("/create", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-def create_workflow(payload: WorkflowCreateSchema, db: Session = Depends(get_db)):
+def create_workflow(payload: WorkflowCreateSchema, db: Session = Depends(get_db), _ = Depends(PermissionGuard("workflow", "execute"))):
     """
     Creates a new configured workflow definition.
     """
@@ -39,7 +40,7 @@ def create_workflow(payload: WorkflowCreateSchema, db: Session = Depends(get_db)
         )
 
 @router.get("", response_model=List[Dict[str, Any]])
-def list_workflows(db: Session = Depends(get_db)):
+def list_workflows(db: Session = Depends(get_db), _ = Depends(PermissionGuard("workflow", "execute"))):
     """
     List all configured workflows.
     """
@@ -53,7 +54,7 @@ def list_workflows(db: Session = Depends(get_db)):
         )
 
 @router.get("/runs", response_model=List[Dict[str, Any]])
-def list_workflow_runs(db: Session = Depends(get_db)):
+def list_workflow_runs(db: Session = Depends(get_db), _ = Depends(PermissionGuard("workflow", "execute"))):
     """
     List history of all workflow executions.
     """
@@ -67,7 +68,7 @@ def list_workflow_runs(db: Session = Depends(get_db)):
         )
 
 @router.get("/runs/{run_id}", response_model=Dict[str, Any])
-def get_workflow_run_details(run_id: str, db: Session = Depends(get_db)):
+def get_workflow_run_details(run_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("workflow", "execute"))):
     """
     Get detailed metrics and step execution logs for a specific run.
     """
@@ -84,7 +85,7 @@ def get_workflow_run_details(run_id: str, db: Session = Depends(get_db)):
     return result
 
 @router.get("/{workflow_id}", response_model=Dict[str, Any])
-def get_workflow_definition(workflow_id: str, db: Session = Depends(get_db)):
+def get_workflow_definition(workflow_id: str, db: Session = Depends(get_db), _ = Depends(PermissionGuard("workflow", "execute"))):
     """
     Retrieve specific workflow configuration details.
     """
@@ -97,24 +98,31 @@ def get_workflow_definition(workflow_id: str, db: Session = Depends(get_db)):
     return wf.to_dict()
 
 @router.post("/run", response_model=Dict[str, Any])
-def run_workflow(payload: WorkflowRunRequestSchema, db: Session = Depends(get_db)):
+def run_workflow(
+    payload: WorkflowRunRequestSchema, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db),
+    _ = Depends(PermissionGuard("workflow", "execute"))
+):
     """
     Runs a saved workflow, or dynamically routes and executes an AI planned workflow based on user goal.
     """
     try:
         if payload.user_goal:
             # Trigger dynamic task planner execution
-            run = workflow_manager.plan_and_execute_workflow(
+            run = workflow_manager.plan_and_execute_workflow_async(
                 db=db,
                 user_goal=payload.user_goal,
-                input_context=payload.input_context
+                input_context=payload.input_context,
+                background_tasks=background_tasks
             )
         elif payload.workflow_id:
             # Trigger standard execution
-            run = workflow_manager.trigger_workflow(
+            run = workflow_manager.trigger_workflow_async(
                 db=db,
                 workflow_id=payload.workflow_id,
-                input_context=payload.input_context
+                input_context=payload.input_context,
+                background_tasks=background_tasks
             )
         else:
             raise HTTPException(

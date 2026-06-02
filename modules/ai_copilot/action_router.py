@@ -15,7 +15,7 @@ def handle_copilot_query(query: str, db: Session, current_user = None) -> dict:
     safety checks, tool execution, and response compilation.
     """
     # 1. Parse intent
-    parsed = parse_intent(query)
+    parsed = parse_intent(query, db)
     intent = parsed.get("intent", "rag_query")
     entities = parsed.get("entities", {})
 
@@ -38,5 +38,5 @@ def handle_copilot_query(query: str, db: Session, current_user = None) -> dict:
     execution_result = execute_tool(intent, entities, db, current_user)
 
     # 5. Compile response statement
-    compiled_res = generate_copilot_response(intent, execution_result, context)
+    compiled_res = generate_copilot_response(intent, execution_result, context, db)
     return compiled_res

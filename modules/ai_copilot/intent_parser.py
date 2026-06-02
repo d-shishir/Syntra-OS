@@ -1,11 +1,13 @@
 import json
 import re
 import logging
+from sqlalchemy.orm import Session
 from backend.app.config import settings
+from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)
 
-def parse_intent(query: str) -> dict:
+def parse_intent(query: str, db: Session = None) -> dict:
     """
     Parses user queries into structured intents and entity parameters.
     """
@@ -44,6 +46,14 @@ def parse_intent(query: str) -> dict:
                 if content.startswith("json"):
                     content = content[4:]
             
+            # Record token usage
+            if db:
+                try:
+                    approx_tokens = (len(system_prompt) + len(query) + len(content)) // 4
+                    ai_call_tracker.record_token_usage(approx_tokens, "copilot_intent_parser", db)
+                except Exception as tracker_err:
+                    logger.warning(f"Failed to record token usage in parse_intent: {tracker_err}")
+
             return json.loads(content.strip())
         except Exception as e:
             logger.warning(f"LLM Intent Parser failed, falling back to heuristics: {str(e)}")

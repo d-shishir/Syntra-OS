@@ -3,11 +3,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from .models import BackgroundTaskJob
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
 
 router = APIRouter()
 
 @router.get("/tasks")
-def list_tasks(status: str | None = None, limit: int = 50, db: Session = Depends(get_db)):
+def list_tasks(status: str | None = None, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     List recent background worker jobs with optional status filter.
     """
@@ -24,7 +26,7 @@ def list_tasks(status: str | None = None, limit: int = 50, db: Session = Depends
         )
 
 @router.get("/metrics")
-def get_worker_metrics(db: Session = Depends(get_db)):
+def get_worker_metrics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Get aggregated statistics for the background worker queue.
     """
@@ -55,7 +57,7 @@ def get_worker_metrics(db: Session = Depends(get_db)):
         )
 
 @router.post("/tasks/{job_id}/retry")
-def retry_task(job_id: str, db: Session = Depends(get_db)):
+def retry_task(job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Manually re-queue a failed job by resetting status to 'pending'.
     """
@@ -90,7 +92,7 @@ def retry_task(job_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/tasks/clear-completed")
-def clear_completed_tasks(db: Session = Depends(get_db)):
+def clear_completed_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Remove all completed background jobs from DB tracking logs to clean up disk space.
     """

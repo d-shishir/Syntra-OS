@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     OPENAI_API_BASE: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    SECRET_KEY: str = "syntra_os_super_secure_enterprise_secret_key_12345"
+    EMBEDDING_DIM: int = 1536
     
     # Advanced RAG Configurations
     CHUNK_SIZE: int = 500

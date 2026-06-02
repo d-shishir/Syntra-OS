@@ -40,6 +40,24 @@ class GraphManager:
                 node.properties = updated_props
                 db.commit()
                 db.refresh(node)
+
+        # Compute and sync vector embedding to resolve the dead/unused code path
+        if db.bind.dialect.name != "sqlite":
+            try:
+                from modules.knowledge_graph.graph_embeddings import GraphEmbeddingsHelper
+                from sqlalchemy import text
+                helper = GraphEmbeddingsHelper()
+                emb = helper.compute_node_embedding(db, node)
+                if emb:
+                    vector_str = f"[{','.join(str(v) for v in emb)}]"
+                    db.execute(
+                        text("UPDATE graph_nodes SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+                        {"emb": vector_str, "id": node.id}
+                    )
+                    db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to update graph node embedding: {str(e)}")
+
         return node
 
     def add_relationship(self, db: Session, source_node: GraphNode, target_node: GraphNode, relationship_type: str, properties: Dict[str, Any] = None) -> GraphEdge:

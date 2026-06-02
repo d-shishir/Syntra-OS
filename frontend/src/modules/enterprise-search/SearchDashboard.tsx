@@ -50,13 +50,18 @@ export function SearchDashboard() {
   // Load analytics & recent searches
   const loadStats = async () => {
     try {
-      const analRes = await fetch(`${BACKEND_URL}/api/v1/search/analytics`);
+      const token = localStorage.getItem("syntra_token") || "";
+      const analRes = await fetch(`${BACKEND_URL}/api/v1/search/analytics`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (analRes.ok) {
         const analData = await analRes.json();
         setAnalytics(analData);
       }
 
-      const recentRes = await fetch(`${BACKEND_URL}/api/v1/search/recent`);
+      const recentRes = await fetch(`${BACKEND_URL}/api/v1/search/recent`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (recentRes.ok) {
         const recentData = await recentRes.json();
         setRecentQueries(recentData || []);
@@ -88,7 +93,10 @@ export function SearchDashboard() {
 
     const fetchSuggestions = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/v1/search/suggestions?prefix=${encodeURIComponent(query)}`);
+        const token = localStorage.getItem("syntra_token") || "";
+        const res = await fetch(`${BACKEND_URL}/api/v1/search/suggestions?prefix=${encodeURIComponent(query)}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
         if (res.ok) {
           const data = await res.json();
           setSuggestions(data || []);
@@ -116,7 +124,7 @@ export function SearchDashboard() {
 
     try {
       // Get auth token from local storage
-      const token = localStorage.getItem("token") || "";
+      const token = localStorage.getItem("syntra_token") || "";
       const res = await fetch(`${BACKEND_URL}/api/v1/search/`, {
         method: "POST",
         headers: {
@@ -146,7 +154,7 @@ export function SearchDashboard() {
   const handleAdvancedSearch = async () => {
     setSearching(true);
     try {
-      const token = localStorage.getItem("token") || "";
+      const token = localStorage.getItem("syntra_token") || "";
       const filters: any = {};
       if (selectedType) filters["type"] = selectedType;
       if (selectedStatus) filters["status"] = selectedStatus;

@@ -61,6 +61,36 @@ class WorkflowManager:
             workflow_id=str(workflow.id)
         )
 
+    def trigger_workflow_async(self, db: Session, workflow_id: str, input_context: dict, background_tasks) -> WorkflowRun:
+        workflow = self.get_workflow(db, workflow_id)
+        if not workflow:
+            raise ValueError(f"Workflow '{workflow_id}' not found.")
+        
+        # 1. Start the run log
+        from .workflow_logger import WorkflowLogger
+        run = WorkflowLogger.start_run(db, workflow.name, str(workflow.id), input_context)
+        
+        # 2. Defer step execution to background tasks
+        from app.database import SessionLocal
+        def bg_executor():
+            thread_db = SessionLocal()
+            try:
+                self.executor.execute_workflow(
+                    db=thread_db,
+                    workflow_name=workflow.name,
+                    steps=workflow.steps,
+                    input_context=input_context,
+                    workflow_id=str(workflow.id),
+                    run_id=str(run.id)
+                )
+            except Exception as e:
+                logger.error(f"Async Workflow step execution failed for run {run.id}: {e}")
+            finally:
+                thread_db.close()
+                
+        background_tasks.add_task(bg_executor)
+        return run
+
     def plan_and_execute_workflow(self, db: Session, user_goal: str, input_context: dict) -> WorkflowRun:
         """
         Uses AI (or fallback rule-based planner) to translate a user's goal into steps,
@@ -85,6 +115,43 @@ class WorkflowManager:
             input_context=input_context,
             workflow_id=str(saved_wf.id)
         )
+
+    def plan_and_execute_workflow_async(self, db: Session, user_goal: str, input_context: dict, background_tasks) -> WorkflowRun:
+        plan = self._generate_ai_plan(user_goal)
+        logger.info(f"Planned workflow structure: {plan}")
+        
+        # Save the workflow definition for traceability
+        saved_wf = self.create_workflow(
+            db=db,
+            name=plan.get("name", "Ad-hoc AI Workflow"),
+            steps=plan.get("steps", []),
+            description=f"AI Generated plan for: '{user_goal}'"
+        )
+        
+        # 1. Start the run log
+        from .workflow_logger import WorkflowLogger
+        run = WorkflowLogger.start_run(db, saved_wf.name, str(saved_wf.id), input_context)
+        
+        # 2. Defer step execution to background tasks
+        from app.database import SessionLocal
+        def bg_executor():
+            thread_db = SessionLocal()
+            try:
+                self.executor.execute_workflow(
+                    db=thread_db,
+                    workflow_name=saved_wf.name,
+                    steps=saved_wf.steps,
+                    input_context=input_context,
+                    workflow_id=str(saved_wf.id),
+                    run_id=str(run.id)
+                )
+            except Exception as e:
+                logger.error(f"Async Workflow step execution failed for run {run.id}: {e}")
+            finally:
+                thread_db.close()
+                
+        background_tasks.add_task(bg_executor)
+        return run
 
     def _generate_ai_plan(self, goal: str) -> dict:
         """

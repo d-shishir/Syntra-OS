@@ -7,10 +7,13 @@ from modules.multi_agent_system.agent_registry import agent_registry
 from modules.multi_agent_system.communication_bus import communication_bus
 from modules.multi_agent_system.memory_manager import memory_manager
 from modules.workflow_engine.tool_registry import tool_registry
+from modules.observability import track_latency
+from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)
 
 class AgentManager:
+    @track_latency("agent_execution", module="multi_agent_system")
     def run_agent(
         self,
         agent_key: str,
@@ -245,6 +248,14 @@ class AgentManager:
                     temperature=0.0
                 )
                 summary = response.choices[0].message.content.strip()
+                
+                # Record token usage
+                if db:
+                    try:
+                        approx_tokens = (len(agent["system_prompt"]) + len(prompt) + len(summary)) // 4
+                        ai_call_tracker.record_token_usage(approx_tokens, f"agent_{agent_key}", db)
+                    except Exception as tracker_err:
+                        logger.warning(f"Failed to record token usage in run_agent: {tracker_err}")
             except Exception as e:
                 logger.warning(f"OpenAI agent summary generation failed: {str(e)}")
                 summary = f"Agent {agent['name']} completed task. Tool output: {result}"

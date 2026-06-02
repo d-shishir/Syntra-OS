@@ -11,19 +11,15 @@ from modules.dashboard_aggregator.activity_feed import get_historical_activity, 
 from modules.dashboard_aggregator.alert_collector import get_unified_inbox
 from modules.dashboard_aggregator.system_summary import generate_ai_summary
 
-# Attempt to import RBAC dependencies
-try:
-    from modules.auth_system.access_policies import get_current_user
-except ImportError:
-    # Safe fallback if not imported
-    get_current_user = lambda: None
+from modules.auth_system.access_policies import get_current_user
+from modules.auth_system.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.get("/overview")
-def get_overview(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_overview(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Returns high-level status counts for widgets. Filters or marks access based on user role.
     """
@@ -41,21 +37,21 @@ def get_overview(db: Session = Depends(get_db), current_user = Depends(get_curre
     }
 
 @router.get("/health")
-def get_health(db: Session = Depends(get_db)):
+def get_health(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Retrieves system health scoring diagnostic parameters.
     """
     return calculate_health_score(db)
 
 @router.get("/inbox")
-def get_inbox(db: Session = Depends(get_db)):
+def get_inbox(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Retrieves consolidated alert + approval queue items.
     """
     return get_unified_inbox(db)
 
 @router.get("/summary")
-def get_summary(db: Session = Depends(get_db)):
+def get_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Compiles AI operations summary paragraph.
     """
@@ -63,14 +59,14 @@ def get_summary(db: Session = Depends(get_db)):
     return {"summary": summary}
 
 @router.get("/activity-feed/history")
-def get_feed_history(db: Session = Depends(get_db)):
+def get_feed_history(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Fetches historical activity logs list.
     """
     return get_historical_activity(db)
 
 @router.get("/activity-feed/stream")
-async def stream_activity_feed(request: Request):
+async def stream_activity_feed(request: Request, current_user: User = Depends(get_current_user)):
     """
     SSE stream endpoint pushing real-time activity events.
     """
@@ -98,7 +94,7 @@ async def stream_activity_feed(request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.post("/quick-action")
-def execute_quick_action(action_payload: dict, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def execute_quick_action(action_payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Dispatches operational quick-actions requested directly from dashboard.
     """

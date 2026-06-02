@@ -22,6 +22,47 @@ import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
 
 const BACKEND_URL = "http://localhost:8000";
 
+const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
+  const token = localStorage.getItem("syntra_token") || "";
+  return {
+    "Authorization": `Bearer ${token}`,
+    ...extraHeaders
+  };
+};
+
+// Install global fetch interceptor
+const originalFetch = window.fetch;
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const token = localStorage.getItem("syntra_token");
+  if (token) {
+    const nextInit = { ...init };
+    if (!nextInit.headers) {
+      nextInit.headers = {};
+    }
+    
+    if (nextInit.headers instanceof Headers) {
+      if (!nextInit.headers.has("Authorization")) {
+        nextInit.headers.set("Authorization", `Bearer ${token}`);
+      }
+    } else if (Array.isArray(nextInit.headers)) {
+      const hasAuth = nextInit.headers.some(([k]) => k.toLowerCase() === 'authorization');
+      if (!hasAuth) {
+        nextInit.headers = [...nextInit.headers, ["Authorization", `Bearer ${token}`]];
+      }
+    } else {
+      nextInit.headers = {
+        ...nextInit.headers,
+      };
+      const headersObj = nextInit.headers as Record<string, string>;
+      if (!headersObj["Authorization"] && !headersObj["authorization"]) {
+        headersObj["Authorization"] = `Bearer ${token}`;
+      }
+    }
+    return originalFetch(input, nextInit);
+  }
+  return originalFetch(input, init);
+};
+
 interface SearchResult {
   content: string;
   chunk_index: number;
@@ -123,14 +164,18 @@ function App() {
     await Promise.resolve();
     setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/documents?is_deleted=false`);
+      const response = await fetch(`${BACKEND_URL}/documents?is_deleted=false`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error("Failed to fetch documents.");
       }
       const data = await response.json();
       setDocuments(data);
 
-      const trashResponse = await fetch(`${BACKEND_URL}/documents?is_deleted=true`);
+      const trashResponse = await fetch(`${BACKEND_URL}/documents?is_deleted=true`, {
+        headers: getAuthHeaders()
+      });
       if (trashResponse.ok) {
         const trashData = await trashResponse.json();
         setTrashDocuments(trashData);
@@ -151,7 +196,10 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}/trash`, { method: "POST" });
+      const response = await fetch(`${BACKEND_URL}/documents/${id}/trash`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         fetchDocuments();
       }
@@ -162,7 +210,10 @@ function App() {
 
   const handleRestoreDocument = async (id: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}/restore`, { method: "POST" });
+      const response = await fetch(`${BACKEND_URL}/documents/${id}/restore`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         fetchDocuments();
       }
@@ -176,7 +227,10 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/${id}`, { method: "DELETE" });
+      const response = await fetch(`${BACKEND_URL}/documents/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         fetchDocuments();
       }
@@ -187,7 +241,9 @@ function App() {
 
   const fetchAIStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/health/ai`);
+      const response = await fetch(`${BACKEND_URL}/health/ai`, {
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         setAiStatus(data);
@@ -218,7 +274,9 @@ function App() {
 
   const fetchSystemMetrics = useCallback(async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/system-metrics`);
+      const response = await fetch(`${BACKEND_URL}/system-metrics`, {
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         setSystemMetrics(data);
@@ -252,7 +310,9 @@ function App() {
     setSearchError(null);
     setSearched(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/search?query=${encodeURIComponent(searchQuery)}`);
+      const res = await fetch(`${BACKEND_URL}/search?query=${encodeURIComponent(searchQuery)}`, {
+        headers: getAuthHeaders()
+      });
       if (!res.ok) {
         throw new Error("Semantic query request failed.");
       }
@@ -280,7 +340,7 @@ function App() {
     try {
       const res = await fetch(`${BACKEND_URL}/chat-with-documents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ query: userMessage })
       });
 

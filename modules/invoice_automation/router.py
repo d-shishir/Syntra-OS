@@ -10,6 +10,9 @@ from app.services.extractor import extract_structured_data
 from app.services.chunker import split_text_into_chunks
 from app.services.embeddings import get_embedding
 from app.services.vector_store import save_document_chunks
+from modules.auth_system.access_policies import get_current_user, PermissionGuard
+from modules.auth_system.permission_engine import check_permission
+from modules.auth_system.models import User
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +25,8 @@ def get_invoices(
     status: str | None = None,
     page: int = 1,
     limit: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(PermissionGuard("invoice_records", "read"))
 ):
     """
     Retrieves invoices list with filters, sorting, and pagination.
@@ -50,7 +54,8 @@ def get_payroll_records(
     status: str | None = None,
     page: int = 1,
     limit: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(PermissionGuard("payroll_records", "read"))
 ):
     """
     Retrieves payroll records list with filters, sorting, and pagination.
@@ -76,11 +81,20 @@ def get_payroll_records(
 def get_anomalies(
     resolved: bool | None = None,
     severity: str | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Retrieves anomalies list with severity and resolution filters.
     """
+    has_invoice_access = check_permission(current_user.role, current_user.department, "invoice_records", "read")
+    has_payroll_access = check_permission(current_user.role, current_user.department, "payroll_records", "read")
+    if not (has_invoice_access or has_payroll_access):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You lack permissions to view anomalies."
+        )
+
     query = db.query(Anomaly)
     if resolved is not None:
         query = query.filter(Anomaly.resolved == resolved)
@@ -91,10 +105,22 @@ def get_anomalies(
     return [anom.to_dict() for anom in results]
 
 @router.post("/anomalies/{anomaly_id}/resolve")
-def resolve_anomaly(anomaly_id: str, db: Session = Depends(get_db)):
+def resolve_anomaly(
+    anomaly_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Marks an anomaly as resolved and updates parent status if necessary.
     """
+    has_invoice_write = check_permission(current_user.role, current_user.department, "invoice_records", "write")
+    has_payroll_write = check_permission(current_user.role, current_user.department, "payroll_records", "write")
+    if not (has_invoice_write or has_payroll_write):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You lack permissions to resolve anomalies."
+        )
+
     anomaly = db.query(Anomaly).filter(Anomaly.id == anomaly_id).first()
     if not anomaly:
         raise HTTPException(
@@ -122,10 +148,21 @@ def resolve_anomaly(anomaly_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Anomaly {anomaly_id} marked as resolved."}
 
 @router.get("/stats")
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Aggregates metrics for dashboard indicators.
     """
+    has_invoice_access = check_permission(current_user.role, current_user.department, "invoice_records", "read")
+    has_payroll_access = check_permission(current_user.role, current_user.department, "payroll_records", "read")
+    if not (has_invoice_access or has_payroll_access):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You lack permissions to view stats."
+        )
+
     # Total invoice metrics
     total_invoiced = db.query(func.sum(Invoice.total_amount)).scalar() or 0.0
     avg_invoice = db.query(func.avg(Invoice.total_amount)).scalar() or 0.0
@@ -174,10 +211,22 @@ def get_stats(db: Session = Depends(get_db)):
     }
 
 @router.post("/reprocess/{document_id}")
-def reprocess_document(document_id: str, db: Session = Depends(get_db)):
+def reprocess_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Manually re-runs structured extraction, validation, and anomaly engines.
     """
+    has_invoice_write = check_permission(current_user.role, current_user.department, "invoice_records", "write")
+    has_payroll_write = check_permission(current_user.role, current_user.department, "payroll_records", "write")
+    if not (has_invoice_write or has_payroll_write):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You lack permissions to reprocess documents."
+        )
+
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(

@@ -7,7 +7,12 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = "syntra_os_super_secure_enterprise_secret_key_12345"
+try:
+    from backend.app.config import settings
+    SECRET_KEY = getattr(settings, "SECRET_KEY", "syntra_os_super_secure_enterprise_secret_key_12345")
+except ImportError:
+    import os
+    SECRET_KEY = os.getenv("SECRET_KEY", "syntra_os_super_secure_enterprise_secret_key_12345")
 
 def _base64_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode('utf-8').replace('=', '')

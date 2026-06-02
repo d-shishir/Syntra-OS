@@ -43,6 +43,14 @@ def run_tests():
         
         # Publish event
         event = publish_event(db, "test_event_type", "test_module", {"test_key": "test_val"}, "high")
+        
+        # Wait for background dispatch to finish
+        import time
+        retries = 20
+        while not subscriber_triggered and retries > 0:
+            time.sleep(0.05)
+            retries -= 1
+
         assert subscriber_triggered, "Subscriber did not trigger!"
         print("✔ Event published and code-level subscribers triggered correctly.")
 
@@ -149,11 +157,21 @@ def run_tests():
         # Publish invoice_uploaded event -> triggers handle_invoice_uploaded -> enqueues invoice_ai_extraction job
         invoice_event = publish_event(db, "invoice_uploaded", "test_agent", {"document_id": "doc-999"}, "high")
         
-        # Verify the job is enqueued
-        triggered_job = db.query(EventJob).filter(
-            EventJob.event_id == invoice_event.id,
-            EventJob.job_type == "invoice_ai_extraction"
-        ).first()
+        # Verify the job is enqueued (with poll waiting)
+        import time
+        triggered_job = None
+        retries = 20
+        while retries > 0:
+            triggered_job = db.query(EventJob).filter(
+                EventJob.event_id == invoice_event.id,
+                EventJob.job_type == "invoice_ai_extraction"
+            ).first()
+            if triggered_job is not None:
+                break
+            time.sleep(0.05)
+            db.rollback()  # Clear identity map cache so it fetches fresh DB state
+            retries -= 1
+
         assert triggered_job is not None
         print("✔ Event-driven pipeline cascade triggers subscribers and enqueues jobs successfully.")
 

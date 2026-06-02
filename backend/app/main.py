@@ -43,6 +43,7 @@ import modules.knowledge_graph.models  # Ensures knowledge graph models are impo
 import modules.enterprise_search.models  # Ensures search query logs models are imported for metadata creation
 import modules.ai_research_engine.models  # Ensures research engine models are imported for metadata creation
 from modules.human_review_system.router import router as reviews_router
+from modules.auth_system.access_policies import get_current_user
 
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
@@ -53,14 +54,31 @@ except Exception as e:
     logging.getLogger(__name__).warning(f"Could not initialize backend.app.database tables: {e}")
 
 
-# Migration: Add is_deleted to documents table if it doesn't exist
+# Migration: Add columns, indexes, and constraints if they don't exist
 from sqlalchemy import text
 with engine.connect() as conn:
     try:
         conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"))
         conn.commit()
     except Exception:
-        # Ignore if column already exists or database/schema migration not required
+        pass
+        
+    try:
+        conn.execute(text("ALTER TABLE graph_nodes ADD COLUMN embedding vector(1536)"))
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id ON document_chunks(document_id)"))
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        conn.execute(text("ALTER TABLE user_sessions ADD CONSTRAINT fk_user_sessions_users FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"))
+        conn.commit()
+    except Exception:
         pass
 
 # Configure logging
@@ -212,7 +230,7 @@ def check_ai_connection():
         }
 
 @app.get("/system-metrics", response_model=SystemMetricsResponse)
-def get_system_metrics(db: Session = Depends(get_db)):
+def get_system_metrics(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Retrieves high-level performance metrics for the RAG pipeline.
     """
@@ -281,7 +299,8 @@ def integrate_document_pipeline(document_id: str, db_session_factory):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """
     Accepts a PDF document, extracts text, stores it in PostgreSQL database,
@@ -354,7 +373,7 @@ async def upload_document(
         )
 
 @app.get("/documents", response_model=list[DocumentResponse])
-def get_documents(is_deleted: bool = False, db: Session = Depends(get_db)):
+def get_documents(is_deleted: bool = False, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Retrieve list of uploaded documents (excluding heavy text content for performance).
     """
@@ -393,7 +412,7 @@ def get_documents(is_deleted: bool = False, db: Session = Depends(get_db)):
         )
 
 @app.post("/documents/{document_id}/trash")
-def trash_document(document_id: str, db: Session = Depends(get_db)):
+def trash_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Move a document to the trash bin (soft delete).
     """
@@ -416,7 +435,7 @@ def trash_document(document_id: str, db: Session = Depends(get_db)):
         )
 
 @app.post("/documents/{document_id}/restore")
-def restore_document(document_id: str, db: Session = Depends(get_db)):
+def restore_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Restore a document from the trash bin.
     """
@@ -439,10 +458,15 @@ def restore_document(document_id: str, db: Session = Depends(get_db)):
         )
 
 @app.delete("/documents/{document_id}")
-def delete_document(document_id: str, db: Session = Depends(get_db)):
+def delete_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Permanently delete a document from the database (cascades to related tables).
     """
+    if current_user.role not in ["admin", "compliance_officer"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Only system administrator or compliance officer accounts can delete documents."
+        )
     try:
         document = db.query(Document).filter(Document.id == document_id).first()
         if not document:
@@ -463,7 +487,7 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/documents/{document_id}", response_model=DocumentDetailResponse)
-def get_document_by_id(document_id: str, db: Session = Depends(get_db)):
+def get_document_by_id(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Get detailed document data including full extracted text.
     """
@@ -506,7 +530,7 @@ def get_document_by_id(document_id: str, db: Session = Depends(get_db)):
         )
 
 @app.post("/documents/{document_id}/extract", response_model=DocumentDetailResponse)
-def extract_document_data(document_id: str, db: Session = Depends(get_db)):
+def extract_document_data(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Extract structured JSON from raw document content and save it in the database.
     """
@@ -572,7 +596,7 @@ def extract_document_data(document_id: str, db: Session = Depends(get_db)):
         )
 
 @app.post("/documents/{document_id}/index")
-def index_document(document_id: str, db: Session = Depends(get_db)):
+def index_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Splits the document text into semantic chunks, generates vector embeddings for each chunk,
     and indexes them in the pgvector database.
@@ -627,7 +651,7 @@ def index_document(document_id: str, db: Session = Depends(get_db)):
         )
 
 @app.get("/search", response_model=list[SearchResultResponse])
-def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db)):
+def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     Semantic search over indexed document chunks using cosine similarity.
     """
@@ -655,7 +679,7 @@ def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db)):
         )
 
 @app.post("/chat-with-documents", response_model=ChatResponse)
-def chat_with_documents(request: ChatRequest, db: Session = Depends(get_db)):
+def chat_with_documents(request: ChatRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     """
     RAG QA Chat endpoint: retrieves context from pgvector, prompts LLM,
     and returns a grounded answer alongside expandable citations.

@@ -1,7 +1,9 @@
 import json
 import logging
 from typing import List, Dict, Any
+from sqlalchemy.orm import Session
 from backend.app.config import settings
+from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +11,7 @@ class ResearchPlanner:
     def __init__(self):
         pass
 
-    def generate_plan(self, goal: str) -> List[str]:
+    def generate_plan(self, goal: str, db: Session = None) -> List[str]:
         """
         Formulates a list of sub-tasks/questions to research from a primary goal statement.
         """
@@ -41,6 +43,15 @@ class ResearchPlanner:
                     content = content.split("```")[1]
                     if content.startswith("json"):
                         content = content[4:]
+                
+                # Record token usage
+                if db:
+                    try:
+                        approx_tokens = (len(system_prompt) + len(goal) + len(content)) // 4
+                        ai_call_tracker.record_token_usage(approx_tokens, "research_goal_planning", db)
+                    except Exception as tracker_err:
+                        logger.warning(f"Failed to record token usage in generate_plan: {tracker_err}")
+
                 return json.loads(content.strip())
             except Exception as e:
                 logger.warning(f"LLM planner failed. Falling back to rules: {str(e)}")

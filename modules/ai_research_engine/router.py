@@ -43,7 +43,7 @@ def run_research_pipeline(task_id: uuid.UUID, goal: str, db_session_factory):
         db.commit()
 
         # Step 1: Planning sub-tasks
-        sub_tasks = planner.generate_plan(goal)
+        sub_tasks = planner.generate_plan(goal, db)
         task.sub_tasks = sub_tasks
         db.commit()
 
@@ -55,7 +55,7 @@ def run_research_pipeline(task_id: uuid.UUID, goal: str, db_session_factory):
             all_evidence.extend(evidence)
 
         # Step 3: Insight Synthesis
-        insights = synthesizer.synthesize(goal, all_evidence)
+        insights = synthesizer.synthesize(goal, all_evidence, db)
 
         # Step 4: Report compilation
         report = report_generator.generate(goal, insights, all_evidence)
@@ -115,7 +115,7 @@ def run_research_pipeline(task_id: uuid.UUID, goal: str, db_session_factory):
         db.close()
 
 @router.post("/run")
-def trigger_research(payload: Dict[str, Any], background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def trigger_research(payload: Dict[str, Any], background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Submits a new research goal to execute in the background.
     """
@@ -138,7 +138,7 @@ def trigger_research(payload: Dict[str, Any], background_tasks: BackgroundTasks,
     return task.to_dict()
 
 @router.get("/history")
-def get_research_history(db: Session = Depends(get_db)):
+def get_research_history(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Lists past query findings.
     """
@@ -152,7 +152,7 @@ def get_research_history(db: Session = Depends(get_db)):
         )
 
 @router.get("/{task_id}")
-def get_task_status(task_id: str, db: Session = Depends(get_db)):
+def get_task_status(task_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Fetch active details and progress of a task.
     """
@@ -173,7 +173,7 @@ def get_task_status(task_id: str, db: Session = Depends(get_db)):
     return task.to_dict()
 
 @router.post("/plan")
-def generate_draft_plan(payload: Dict[str, Any]):
+def generate_draft_plan(payload: Dict[str, Any], current_user: User = Depends(get_current_user)):
     """
     Drafts research steps without launching execution.
     """
@@ -190,11 +190,11 @@ def generate_draft_plan(payload: Dict[str, Any]):
     }
 
 @router.get("/report/{task_id}")
-def get_research_report(task_id: str, db: Session = Depends(get_db)):
+def get_research_report(task_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Fetch final structured markdown output.
     """
-    task = get_task_status(task_id, db)
+    task = get_task_status(task_id, db, current_user=current_user)
     report = task.get("report_content")
     if not report or "markdown" not in report:
         raise HTTPException(

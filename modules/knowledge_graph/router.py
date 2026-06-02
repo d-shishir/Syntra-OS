@@ -7,6 +7,7 @@ from modules.knowledge_graph.graph_manager import GraphManager
 from modules.knowledge_graph.graph_query_engine import GraphQueryEngine
 from modules.knowledge_graph.models import GraphNode, GraphEdge
 from modules.auth_system.router import get_current_user
+from modules.auth_system.models import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,7 +16,7 @@ manager = GraphManager()
 query_engine = GraphQueryEngine()
 
 @router.get("/entity/{entity_id}")
-def get_entity(entity_id: str, db: Session = Depends(get_db)):
+def get_entity(entity_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Retrieve details of a single entity and its immediate relationships.
     """
@@ -28,7 +29,7 @@ def get_entity(entity_id: str, db: Session = Depends(get_db)):
     return data
 
 @router.get("/relationships/{entity_id}")
-def get_relationships(entity_id: str, db: Session = Depends(get_db)):
+def get_relationships(entity_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Run BFS traversal from a node to obtain connected sub-graphs.
     """
@@ -41,7 +42,7 @@ def get_relationships(entity_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/query")
-def query_graph(payload: Dict[str, Any], db: Session = Depends(get_db)):
+def query_graph(payload: Dict[str, Any], db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Submit a keyword query or traversal criteria to return matching sub-graphs.
     """
@@ -83,7 +84,7 @@ def query_graph(payload: Dict[str, Any], db: Session = Depends(get_db)):
     }
 
 @router.get("/visualization")
-def get_visualization(db: Session = Depends(get_db)):
+def get_visualization(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Returns the complete list of nodes and edges for frontend D3/Network graph rendering.
     """
@@ -96,7 +97,7 @@ def get_visualization(db: Session = Depends(get_db)):
         )
 
 @router.get("/analytics")
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Computes graph metrics: highly connected entities (degree centrality),
     workflow bottlenecks, and active departments.
@@ -159,7 +160,7 @@ def get_analytics(db: Session = Depends(get_db)):
         )
 
 @router.post("/seed")
-def seed_knowledge_graph(db: Session = Depends(get_db)):
+def seed_knowledge_graph(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Seeds initial organizational relationship structures to make the explorer dashboard immediately usable.
     """

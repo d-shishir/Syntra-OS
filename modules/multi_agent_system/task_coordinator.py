@@ -12,10 +12,13 @@ from modules.multi_agent_system.agent_manager import agent_manager
 from modules.multi_agent_system.communication_bus import communication_bus
 from modules.multi_agent_system.memory_manager import memory_manager
 
+from modules.observability import track_latency
+from modules.observability.ai_call_tracker import ai_call_tracker
+
 logger = logging.getLogger(__name__)
 
 class TaskCoordinator:
-    def decompose_goal(self, goal: str, context: dict = None) -> list:
+    def decompose_goal(self, goal: str, context: dict = None, db: Session = None) -> list:
         """
         Decomposes a high-level user goal into structured subtasks.
         Each subtask is a dict with keys:
@@ -52,7 +55,17 @@ class TaskCoordinator:
                     ],
                     temperature=0.0
                 )
-                steps = json.loads(response.choices[0].message.content.strip())
+                raw_response = response.choices[0].message.content.strip()
+                
+                # Record token usage
+                if db:
+                    try:
+                        approx_tokens = (len(prompt) + len(raw_response)) // 4
+                        ai_call_tracker.record_token_usage(approx_tokens, "agent_coordinator_decomposition", db)
+                    except Exception as tracker_err:
+                        logger.warning(f"Failed to record token usage in decompose_goal: {tracker_err}")
+
+                steps = json.loads(raw_response)
                 if isinstance(steps, list):
                     return steps
             except Exception as e:
@@ -173,7 +186,7 @@ class TaskCoordinator:
 
             try:
                 # 2. Decompose Goal
-                plan = self.decompose_goal(goal, context)
+                plan = self.decompose_goal(goal, context, db)
                 run.execution_plan = plan
                 db.commit()
                 
@@ -291,6 +304,14 @@ class TaskCoordinator:
                             temperature=0.0
                         )
                         final_report = response.choices[0].message.content.strip()
+                        
+                        # Record token usage
+                        if db:
+                            try:
+                                approx_tokens = (len(prompt) + len(final_report)) // 4
+                                ai_call_tracker.record_token_usage(approx_tokens, "agent_coordinator_synthesis", db)
+                            except Exception as tracker_err:
+                                logger.warning(f"Failed to record token usage in final synthesis: {tracker_err}")
                     except Exception as e:
                         logger.warning(f"Final synthesis failed: {str(e)}")
                         final_report = f"Syntra OS Execution Report\n\nObjective: {goal}\n\nCompleted steps:\n{combined_summary}"
