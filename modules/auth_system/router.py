@@ -38,6 +38,9 @@ def seed_default_users(db: Session):
 
 @router.post("/login")
 def login(payload: dict, request: Request, db: Session = Depends(get_db)):
+    # Ensure default users are seeded in the DB
+    seed_default_users(db)
+    
     email = payload.get("email")
     password = payload.get("password")
     if not email or not password:

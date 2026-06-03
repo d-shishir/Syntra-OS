@@ -4,6 +4,7 @@ import {
   Workflow, Users, FileText, CheckCircle2, ShieldAlert,
   Activity, Search, Terminal, ArrowUpRight, HelpCircle, Loader2, ChevronRight
 } from "lucide-react";
+import { MarkdownRenderer } from "../../components/ui/MarkdownRenderer";
 
 // Terminal slash-command palette
 const SLASH_COMMANDS: { cmd: string; desc: string; mode: "ask" | "action" | "plan" | "debug" }[] = [
@@ -425,7 +426,7 @@ export const CopilotDashboard: React.FC = () => {
                   {msg.sender === "user" ? "Corporate operator" : "Syntra Assistant"}
                 </span>
                 
-                <p className="leading-relaxed select-text whitespace-pre-wrap">{msg.text}</p>
+                <MarkdownRenderer content={msg.text} />
                 
                 {renderResponseCard(msg)}
               </div>

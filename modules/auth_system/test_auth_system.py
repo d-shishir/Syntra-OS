@@ -88,6 +88,11 @@ def run_tests():
         assert len(audits) >= 1
         print("✔ Security audit log records trace history logs successfully.")
 
+        # Re-seed default users so we don't leave the DB empty after running tests
+        from modules.auth_system.router import seed_default_users
+        seed_default_users(db)
+        print("✔ Restored default seeded users.")
+
         print("\n✔ ALL IAM ACCESS SYSTEM TESTS PASSED SUCCESSFULLY!")
 
     finally:

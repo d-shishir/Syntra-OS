@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { 
   Cpu, Terminal, Sparkles, Layers, RefreshCw, Play, Users, Clock, Plus
 } from "lucide-react";
+import { MarkdownRenderer } from "../../components/ui/MarkdownRenderer";
 
 interface Agent {
   key: string;
@@ -481,9 +482,7 @@ export function AgentDashboard({ backendUrl }: AgentDashboardProps) {
                   <p className="text-xs">Agents are working. Compiling audit results...</p>
                 </div>
               ) : selectedRun.shared_memory && selectedRun.shared_memory.final_report ? (
-                <div className="text-xs font-sans text-gray-300 whitespace-pre-wrap leading-relaxed">
-                  {selectedRun.shared_memory.final_report}
-                </div>
+                <MarkdownRenderer content={selectedRun.shared_memory.final_report} className="text-xs" />
               ) : (
                 <p className="text-xs text-darkMuted italic text-center py-8">Final report compilation pending.</p>
               )}
