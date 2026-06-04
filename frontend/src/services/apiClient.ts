@@ -41,7 +41,7 @@ export const apiClient = {
       headers: mergedHeaders
     });
 
-    if (response.status === 401) {
+    if (response.status === 401 && !url.includes("/login")) {
       localStorage.removeItem("syntra_token");
       // Force reload to trigger authentication view in UI
       window.location.reload();

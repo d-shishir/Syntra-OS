@@ -2,13 +2,13 @@ import React, { useState } from "react";
 import { 
   Cpu, Sparkles, Network, Search, BookOpen, MessageSquare, 
   Sliders, Server, ShieldAlert, Activity, Zap, Bell, Lock, 
-  ChevronLeft, ChevronRight, LogOut, Shield
+  ChevronLeft, ChevronRight, LogOut, Shield, Link2
 } from "lucide-react";
 
 export type WorkspaceTab = 
   | "hub" | "copilot" | "graph" | "search" | "research" | "assistant" 
   | "automation" | "worker" | "agents" | "observability" | "review" 
-  | "events" | "notifications" | "auth";
+  | "events" | "notifications" | "auth" | "integrations";
 
 interface AppShellProps {
   activeTab: WorkspaceTab;
@@ -65,6 +65,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       title: "System Admin",
       items: [
         { id: "worker", label: "Worker Queue", icon: Server },
+        { id: "integrations", label: "Integrations Hub", icon: Link2 },
         { id: "observability", label: "Telemetry Logs", icon: Activity },
         { id: "events", label: "Event Bus", icon: Zap },
         { id: "notifications", label: "Alert Hub", icon: Bell },

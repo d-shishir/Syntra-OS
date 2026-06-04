@@ -33,6 +33,7 @@ import { CopilotDashboard } from "./modules/ai-copilot/CopilotDashboard";
 import { GraphDashboard } from "./modules/knowledge-graph/GraphDashboard";
 import { SearchDashboard } from "./modules/enterprise-search/SearchDashboard";
 import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
+import { IntegrationsDashboard } from "./modules/integrations/IntegrationsDashboard";
 
 interface SearchResult {
   content: string;
@@ -1045,6 +1046,8 @@ function App() {
           return <PermissionDenied requiredPermission="Administrator queue clearance (canViewSystemQueues)" onGoBack={() => setActiveTab("hub")} />;
         }
         return <WorkerMonitor />;
+      case "integrations":
+        return <IntegrationsDashboard />;
       case "observability":
         if (!permissions.canAccessTelemetry) {
           return <PermissionDenied requiredPermission="Analyst telemetry clearance (canAccessTelemetry)" onGoBack={() => setActiveTab("hub")} />;
