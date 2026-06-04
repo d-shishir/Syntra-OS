@@ -5,11 +5,17 @@ import type { DocumentMetadata } from "./components/DocumentList";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { 
   Server, Search, Loader2, HelpCircle, Send, ChevronDown, ChevronUp, 
-  Clock, Sliders, Eye, EyeOff, Lock, AlertTriangle, Zap
+  Clock, Sliders, Eye, EyeOff, Lock, AlertTriangle, Zap, Shield, Key,
+  RefreshCw, CheckCircle2, Activity, Terminal, ArrowRight, LockKeyhole,
+  ScanLine, UserPlus, Play, AlertCircle, ShieldAlert, Check, X, Users,
+  Sparkles, CheckCircle, HelpCircle as HelpIcon, ArrowUpRight, Cpu
 } from "lucide-react";
 import { AppShell } from "./layouts/AppShell";
 import type { WorkspaceTab } from "./layouts/AppShell";
 import { apiClient } from "./services/apiClient";
+import { useAuth, usePermissions } from "./auth/hooks/authHooks";
+import { PermissionDenied } from "./auth/guards/PermissionDenied";
+import { SessionExpiringModal } from "./auth/guards/SessionExpiringModal";
 
 // Import Module Dashboards
 import { Dashboard as FinanceDashboard } from "./modules/invoice-automation/Dashboard";
@@ -77,8 +83,18 @@ interface SystemMetrics {
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(localStorage.getItem("syntra_token"));
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const {
+    token,
+    currentUser,
+    sessionStatus,
+    sessionTimeRemaining,
+    login,
+    logout,
+    extendSession,
+    setSessionStatus
+  } = useAuth();
+
+  const permissions = usePermissions();
 
   // App States
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
@@ -117,42 +133,54 @@ function App() {
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
 
+  // Redesigned Auth Views state & onboarding
+  const [authView, setAuthView] = useState<"login" | "forgot" | "reset" | "locked" | "unauthorized" | "expired" | "logout" | "mfa" | "invite" | "onboarding">("login");
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+
   // Login inputs state
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const decodeJwt = (activeToken: string) => {
-    try {
-      const base64Url = activeToken.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
-      return JSON.parse(jsonPayload);
-    } catch (e) {
-      return null;
-    }
-  };
+  // Role-Based Redirection on Login
+  useEffect(() => {
+    if (currentUser) {
+      const onboarded = localStorage.getItem("syntra_onboarded");
+      if (onboarded !== "true") {
+        setShowOnboarding(true);
+      }
+      
+      // Auto-enable developer mode for Admin/Compliance
+      if (["admin", "compliance_officer"].includes(currentUser.role)) {
+        setIsAdvancedMode(true);
+      }
 
-  const fetchUserContext = useCallback((activeToken: string) => {
-    const payload = decodeJwt(activeToken);
-    if (payload) {
-      setCurrentUser({
-        id: payload.sub,
-        name: payload.role === "admin" 
-          ? "Admin Director" 
-          : payload.role.replace("_", " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-        role: payload.role,
-        department: payload.department
-      });
-    } else {
-      localStorage.removeItem("syntra_token");
-      setToken(null);
-      setCurrentUser(null);
+      // Redirect to specific workspace based on role
+      switch (currentUser.role) {
+        case "admin":
+          setActiveTab("auth"); // System Security IAM
+          break;
+        case "finance_manager":
+          setActiveTab("automation");
+          setAutomationSubTab("finance");
+          break;
+        case "sales_rep":
+          setActiveTab("automation");
+          setAutomationSubTab("crm");
+          break;
+        case "compliance_officer":
+          setActiveTab("review"); // Human Review Governance
+          break;
+        case "analyst":
+          setActiveTab("observability");
+          break;
+        default:
+          setActiveTab("hub");
+      }
     }
-  }, []);
+  }, [currentUser]);
 
   const handleLoginSubmit = async (e: React.FormEvent | string, manualPassword?: string) => {
     if (typeof e !== "string") {
@@ -162,30 +190,18 @@ function App() {
     setLoginLoading(true);
 
     const email = typeof e === "string" ? e : emailInput;
-    const password = typeof e === "string" ? manualPassword : passwordInput;
+    const password = (typeof e === "string" ? manualPassword : passwordInput) || "";
 
     try {
-      const res = await apiClient.post("/api/v1/auth/login", { email, password });
-      if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem("syntra_token", data.access_token);
-        setToken(data.access_token);
-        fetchUserContext(data.access_token);
-      } else {
-        const errData = await res.json();
-        setLoginError(errData.detail || "Authentication credentials rejected.");
+      const success = await login(email, password);
+      if (!success) {
+        setLoginError("Authentication credentials rejected.");
       }
     } catch (err) {
       setLoginError("Failed to reach security authentication service.");
     } finally {
       setLoginLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("syntra_token");
-    setToken(null);
-    setCurrentUser(null);
   };
 
   const fetchDocuments = useCallback(async () => {
@@ -298,12 +314,11 @@ function App() {
 
   useEffect(() => {
     if (token) {
-      fetchUserContext(token);
       fetchDocuments();
       fetchAIStatus();
       fetchSystemMetrics();
     }
-  }, [token, fetchDocuments, fetchAIStatus, fetchSystemMetrics, fetchUserContext]);
+  }, [token, fetchDocuments, fetchAIStatus, fetchSystemMetrics]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -375,76 +390,593 @@ function App() {
   // 1. Root Login Gating layout
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-darkBg text-gray-200 p-6">
-        <div className="max-w-md w-full p-8 border border-darkBorder rounded-2xl bg-darkPanel/45 space-y-6 shadow-2xl relative">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-neonIndigo/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="min-h-screen bg-darkBg text-gray-200 flex flex-col md:flex-row relative overflow-hidden font-sans">
+        
+        {/* Left Side: Enterprise Hub Overview & Telemetry Ticker */}
+        <div className="w-full md:w-1/2 bg-darkPanel/25 border-b md:border-b-0 md:border-r border-darkBorder flex flex-col justify-between p-8 md:p-12 relative overflow-hidden select-none">
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-neonIndigo/5 to-transparent pointer-events-none" />
           
-          <div className="text-center space-y-2 relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20 flex items-center justify-center mx-auto">
-              <Lock className="w-6 h-6" />
+          {/* Header Branding */}
+          <div className="space-y-4 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-neonIndigo/10 text-neonIndigo border border-neonIndigo/20 flex items-center justify-center">
+                <Cpu className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h1 className="text-lg font-display font-extrabold tracking-wider text-gray-100 uppercase">
+                  SYNTRA OS
+                </h1>
+                <span className="text-[9px] font-mono text-neonIndigo uppercase tracking-widest block font-bold">
+                  Enterprise Security Operations
+                </span>
+              </div>
             </div>
-            <h3 className="text-lg font-display font-extrabold text-gray-200">Authenticate Syntra OS</h3>
-            <p className="text-xs text-darkMuted">Enter your credentials or select a simulation profile to access the operational shell.</p>
+            
+            <div className="pt-6 space-y-3">
+              <h2 className="text-xl font-bold text-gray-200 leading-snug">
+                Autonomous AI Operations Control Console
+              </h2>
+              <p className="text-xs text-darkMuted leading-relaxed max-w-sm">
+                Secure enterprise workspace consolidating document ingestion intelligence, multi-agent swarm coordination, financial audit workflows, and unified system telemetry.
+              </p>
+            </div>
           </div>
 
-          <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs relative z-10">
-            <div className="space-y-1.5">
-              <label className="text-darkMuted font-semibold">Email Address</label>
-              <input
-                type="email"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                className="form-input"
-                placeholder="e.g. admin@syntra.io"
-                required
-              />
+          {/* Real-time System Status Telemetry */}
+          <div className="my-8 space-y-3.5 relative z-10">
+            <span className="text-[9.5px] font-mono font-bold uppercase tracking-widest text-darkMuted block">
+              SYSTEM TELEMETRY GATEWAY
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-darkBg/60 border border-darkBorder rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-darkMuted uppercase font-mono">IAM GATEWAY</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <span className="text-xs font-semibold text-gray-300 block">ACTIVE (V4.2)</span>
+              </div>
+              <div className="p-3 bg-darkBg/60 border border-darkBorder rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-darkMuted uppercase font-mono">EVENT DISPATCHER</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <span className="text-xs font-semibold text-gray-300 block">CONNECTED (24/S)</span>
+              </div>
+              <div className="p-3 bg-darkBg/60 border border-darkBorder rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-darkMuted uppercase font-mono">SWARM WORKERS</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                </div>
+                <span className="text-xs font-semibold text-gray-300 block">12 THREADS SAFE</span>
+              </div>
+              <div className="p-3 bg-darkBg/60 border border-darkBorder rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-darkMuted uppercase font-mono">DATABASE NODE</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                </div>
+                <span className="text-xs font-semibold text-gray-300 block">POSTGRES (PORT 5433)</span>
+              </div>
             </div>
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-darkMuted font-semibold">Password</label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="form-input"
-                placeholder="••••••••"
-                required
-              />
+          {/* Security Logging Live Ticker */}
+          <div className="space-y-2.5 relative z-10">
+            <span className="text-[9.5px] font-mono font-bold uppercase tracking-widest text-darkMuted block">
+              SECURITY AUDIT LIVE FEED
+            </span>
+            <div className="p-4 bg-darkBg border border-darkBorder rounded-xl font-mono text-[9.5px] leading-relaxed text-darkMuted space-y-1.5 max-h-[140px] overflow-hidden">
+              <div className="flex gap-2">
+                <span className="text-neonIndigo shrink-0">[19:28:10]</span>
+                <span className="text-gray-300">SYSTEM: Established secure cryptographic boundary check.</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-neonIndigo shrink-0">[19:28:15]</span>
+                <span className="text-gray-300">POLICY: Loaded RBAC configuration rule templates.</span>
+              </div>
+              <div className="flex gap-2 text-amber-400">
+                <span className="shrink-0">[19:29:02]</span>
+                <span>SEC-AUDIT: Initialized token expiration warning timeout parameters.</span>
+              </div>
+              <div className="flex gap-2 text-emerald-400">
+                <span className="shrink-0">[19:29:45]</span>
+                <span>INTEGRITY: Diagnostic check passed. DB status: healthy.</span>
+              </div>
             </div>
+          </div>
+          
+          <div className="text-[10px] text-darkMuted font-mono mt-8 relative z-10">
+            © 2026 Syntra Technologies Inc. All rights reserved. SEC-ISO-27001 Compliant.
+          </div>
+        </div>
+        
+        {/* Right Side: Redesigned Auth Screen Controller */}
+        <div className="w-full md:w-1/2 flex flex-col justify-between p-8 md:p-12 bg-darkBg relative">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-neonTeal/5 rounded-full blur-3xl pointer-events-none" />
+          
+          {/* Top Filler Space */}
+          <div />
 
-            {loginError && (
-              <div className="p-3 border border-red-500/20 bg-red-500/5 text-red-400 rounded-lg flex items-center gap-2 font-medium">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{loginError}</span>
+          {/* Main Form Box */}
+          <div className="max-w-md w-full mx-auto space-y-6 relative z-10 py-6">
+            
+            {/* View State 1: Login */}
+            {authView === "login" && (
+              <div className="space-y-6">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Access Operations Shell</h3>
+                  <p className="text-xs text-darkMuted">Provide authenticated credentials to initialize your role session context.</p>
+                </div>
+
+                <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 block">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. admin@syntra.io"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-semibold text-gray-300 block">Security Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setAuthView("forgot")}
+                        className="text-neonIndigo hover:underline text-[11px]"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 py-1 select-none">
+                    <input type="checkbox" id="rememberMe" className="rounded bg-darkPanel border-darkBorder focus:ring-0 text-neonIndigo" />
+                    <label htmlFor="rememberMe" className="text-[11px] text-darkMuted cursor-pointer hover:text-gray-300">
+                      Remember device authentication for 30 days
+                    </label>
+                  </div>
+
+                  {loginError && (
+                    <div className="p-3 border border-red-500/20 bg-red-500/5 text-red-400 rounded-lg flex items-center gap-2 font-medium">
+                      <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
+                      <span>{loginError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loginLoading}
+                    className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs disabled:opacity-50"
+                  >
+                    {loginLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LockKeyhole className="w-3.5 h-3.5" />}
+                    <span>Sign In to Platform</span>
+                  </button>
+                </form>
+
+                {/* Quick select simulator profiles */}
+                <div className="border-t border-darkBorder/40 pt-4 space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-darkMuted">
+                      Quick-Select Simulation Roles
+                    </span>
+                    <button
+                      onClick={() => setAuthView("invite")}
+                      className="text-xs text-neonTeal font-mono font-bold hover:underline flex items-center gap-1"
+                    >
+                      <UserPlus className="w-3 h-3" /> Invite User
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    {[
+                      { email: "admin@syntra.io", label: "Admin Director", desc: "System Control" },
+                      { email: "finance@syntra.io", label: "Finance Specialist", desc: "Accounts & Bills" },
+                      { email: "sales@syntra.io", label: "Sales Representative", desc: "CRM & Pipelines" },
+                      { email: "compliance@syntra.io", label: "Compliance Specialist", desc: "IAM & Audit Logs" }
+                    ].map(profile => (
+                      <button
+                        key={profile.email}
+                        type="button"
+                        onClick={() => handleLoginSubmit(profile.email, `${profile.email.split('@')[0]}password`)}
+                        className="p-2.5 border border-darkBorder bg-darkPanel/20 hover:border-neonIndigo/40 hover:bg-darkPanel/40 text-darkMuted hover:text-gray-200 rounded-xl text-left transition-all cursor-pointer"
+                      >
+                        <span className="font-semibold block text-gray-200">{profile.label}</span>
+                        <span className="opacity-60 block text-[9px] truncate">{profile.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 text-xs"
-            >
-              {loginLoading ? "Authenticating session..." : "Sign In to Platform"}
-            </button>
-          </form>
+            {/* View State 2: Forgot Password */}
+            {authView === "forgot" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Forgot Password</h3>
+                  <p className="text-xs text-darkMuted">Submit your registered account email, and we will send a security code to restore access.</p>
+                </div>
+                <div className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 block">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. operator@syntra.io"
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      alert("Simulated recovery link sent successfully.");
+                      setAuthView("reset");
+                    }}
+                    className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Recovery Code</span>
+                  </button>
+                  <button
+                    onClick={() => setAuthView("login")}
+                    className="w-full text-center text-xs text-darkMuted hover:text-gray-300 font-semibold"
+                  >
+                    Return to Login Console
+                  </button>
+                </div>
+              </div>
+            )}
 
-          <div className="border-t border-darkBorder/60 pt-4 space-y-2.5 relative z-10">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-darkMuted block">Quick-Select Simulation Profiles</span>
-            <div className="grid grid-cols-2 gap-2 text-[10px]">
-              {[
-                { email: "admin@syntra.io", label: "Admin Director" },
-                { email: "finance@syntra.io", label: "Finance Specialist" },
-                { email: "sales@syntra.io", label: "Sales Rep" },
-                { email: "compliance@syntra.io", label: "Compliance Officer" }
-              ].map(profile => (
+            {/* View State 3: Reset Password */}
+            {authView === "reset" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Reset Password</h3>
+                  <p className="text-xs text-darkMuted">A recovery code was accepted. Please formulate a new secure platform password.</p>
+                </div>
+                <div className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 block">New Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 block">Confirm Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      alert("Password reset completed. Authenticating simulated session.");
+                      setAuthView("login");
+                    }}
+                    className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Update Password & Re-authenticate</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 4: Account Locked */}
+            {authView === "locked" && (
+              <div className="space-y-5">
+                <div className="p-4 bg-red-950/20 border border-red-500/25 rounded-2xl text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mx-auto">
+                    <ShieldAlert className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-mono font-bold text-red-400 uppercase tracking-widest">
+                      ACCOUNT SECURITY LOCKDOWN
+                    </h3>
+                    <p className="text-xs text-darkMuted leading-relaxed">
+                      Temporary security restriction enforced due to 5 consecutive login failures.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="py-4 text-center bg-darkPanel/30 border border-darkBorder rounded-xl">
+                  <span className="font-mono text-2xl font-extrabold text-amber-500">45s</span>
+                  <span className="block text-[8px] font-mono uppercase tracking-widest text-darkMuted mt-1">
+                    UNTIL COOL-DOWN TIMER EXPIRES
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAuthView("login")}
+                    className="flex-1 py-2 bg-darkPanel hover:bg-darkBorder border border-darkBorder text-gray-200 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Back to Login
+                  </button>
+                  <button
+                    onClick={() => {
+                      alert("Simulated security cooldown bypassed.");
+                      setAuthView("login");
+                    }}
+                    className="flex-1 py-2 bg-rose-500/15 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/25 hover:border-rose-500 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Unlock Simulator
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 5: Unauthorized Access */}
+            {authView === "unauthorized" && (
+              <div className="space-y-5">
+                <div className="p-5 bg-amber-500/5 border border-amber-500/25 rounded-2xl space-y-3 text-xs leading-relaxed text-darkMuted">
+                  <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>403 FORBIDDEN</span>
+                  </div>
+                  <p>
+                    Your authentication context has been validated, but your profile lacks clearance for the requested operational zone.
+                  </p>
+                </div>
                 <button
-                  key={profile.email}
-                  type="button"
-                  onClick={() => handleLoginSubmit(profile.email, `${profile.email.split('@')[0]}password`)}
-                  className="p-2 border border-darkBorder bg-darkPanel/20 hover:border-darkBorder/100 text-darkMuted hover:text-gray-300 rounded-lg text-left transition-all cursor-pointer"
+                  onClick={() => setAuthView("login")}
+                  className="w-full py-2 bg-darkPanel border border-darkBorder text-gray-200 rounded-lg text-xs font-semibold cursor-pointer"
                 >
-                  <span className="font-semibold block">{profile.label}</span>
-                  <span className="opacity-60 block text-[9px] truncate">{profile.email}</span>
+                  Return to Auth Interface
+                </button>
+              </div>
+            )}
+
+            {/* View State 6: Session Expired */}
+            {authView === "expired" && (
+              <div className="space-y-5">
+                <div className="p-4 bg-darkPanel/20 border border-darkBorder rounded-2xl text-center space-y-2">
+                  <Clock className="w-8 h-8 text-amber-500 mx-auto animate-pulse" />
+                  <h3 className="text-sm font-semibold text-gray-200">Session Expired</h3>
+                  <p className="text-xs text-darkMuted max-w-xs mx-auto leading-relaxed">
+                    Your JWT access token has expired. Input password to quickly re-acquire token credentials.
+                  </p>
+                </div>
+                <div className="space-y-3.5 text-xs">
+                  <input
+                    type="password"
+                    placeholder="Input password to resume session..."
+                    className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      alert("Session renewed via refresh tokens.");
+                      setAuthView("login");
+                    }}
+                    className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Re-authenticate Context</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 7: Logout Confirmation */}
+            {authView === "logout" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Logout Security Revocation</h3>
+                  <p className="text-xs text-darkMuted">Are you sure you want to terminate your active operations session?</p>
+                </div>
+                <div className="space-y-3 text-xs bg-darkPanel/25 border border-darkBorder/60 p-4 rounded-xl text-darkMuted space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                    <span>Revoke JWT Access & Refresh Credentials</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                    <span>Invalidate active database session id</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setAuthView("login")}
+                    className="flex-1 py-2 bg-darkPanel border border-darkBorder text-gray-200 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      alert("Terminated and flushed session caches.");
+                      setAuthView("login");
+                    }}
+                    className="flex-1 py-2 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/25 hover:border-red-500 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Confirm Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 8: MFA Setup */}
+            {authView === "mfa" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Enroll Multi-Factor Authentication</h3>
+                  <p className="text-xs text-darkMuted">Scan the dynamic configuration code using your authenticator application.</p>
+                </div>
+
+                <div className="flex justify-center py-4">
+                  {/* CSS Mock QR graphic representation */}
+                  <div className="w-32 h-32 bg-white p-2 rounded-xl border border-darkBorder flex flex-col justify-between shrink-0">
+                    <div className="flex justify-between">
+                      <div className="w-8 h-8 border-4 border-black" />
+                      <div className="w-8 h-8 border-4 border-black" />
+                    </div>
+                    <div className="w-full flex items-center justify-center text-[10px] text-black font-mono font-bold">
+                      [ SYNTRA MFA ]
+                    </div>
+                    <div className="flex justify-between">
+                      <div className="w-8 h-8 border-4 border-black" />
+                      <div className="w-8 h-8 flex flex-wrap gap-0.5 p-0.5">
+                        <div className="w-2.5 h-2.5 bg-black" /><div className="w-2.5 h-2.5 bg-black" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 block">6-Digit Verification Code</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      className="w-full bg-darkPanel border border-darkBorder focus:border-neonIndigo rounded-lg px-3.5 py-2.5 text-xs text-gray-200 outline-none text-center font-mono tracking-widest text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      alert("MFA setup completed successfully.");
+                      setAuthView("login");
+                    }}
+                    className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                  >
+                    <ScanLine className="w-3.5 h-3.5" />
+                    <span>Verify & Enroll Authenticator</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 9: Invite User */}
+            {authView === "invite" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Simulate Administrative Invitation</h3>
+                  <p className="text-xs text-darkMuted">Admin workflow to invite user profiles and assign default credentials.</p>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-gray-300 font-bold block">User Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. John Doe"
+                      className="w-full bg-darkPanel border border-darkBorder rounded px-3 py-2 text-gray-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-gray-300 font-bold block">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="john@syntra.io"
+                      className="w-full bg-darkPanel border border-darkBorder rounded px-3 py-2 text-gray-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-gray-300 font-bold block">Role Privilege</label>
+                    <select className="w-full bg-darkPanel border border-darkBorder rounded px-3 py-2 text-gray-200">
+                      <option value="operations_manager">Operations Manager</option>
+                      <option value="analyst">Analyst</option>
+                      <option value="reviewer">Reviewer</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      alert("Invite simulation link copied: http://localhost:5173/?invite_token=mock123");
+                      setAuthView("login");
+                    }}
+                    className="w-full py-2.5 bg-neonTeal hover:bg-neonTeal/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Generate Invitation Link</span>
+                  </button>
+                  <button
+                    onClick={() => setAuthView("login")}
+                    className="w-full text-center text-xs text-darkMuted hover:text-gray-300 font-semibold"
+                  >
+                    Return to Login Console
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* View State 10: Onboarding Walkthrough */}
+            {authView === "onboarding" && (
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-gray-100">Interactive Walkthrough Guide</h3>
+                  <p className="text-xs text-darkMuted">Explore how first-time onboarding walks users through system modules.</p>
+                </div>
+                <div className="p-4 bg-darkPanel/30 border border-darkBorder rounded-2xl text-xs space-y-3 leading-relaxed text-darkMuted">
+                  <p>
+                    On initial platform entry, users are greeted by an overlay explaining:
+                  </p>
+                  <ul className="space-y-1.5 list-disc pl-4 text-[11px]">
+                    <li>**Workspace Layout**: Sidebar, Collapsibility, Telemetry dials.</li>
+                    <li>**Core Modules**: Swarm Coordinator, Document upload, Search indices.</li>
+                    <li>**Account Governance**: Session timers, access request justifications.</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowOnboarding(true);
+                    setOnboardingStep(0);
+                  }}
+                  className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer text-xs"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Guide Walkthrough</span>
+                </button>
+                <button
+                  onClick={() => setAuthView("login")}
+                  className="w-full text-center text-xs text-darkMuted hover:text-gray-300 font-semibold"
+                >
+                  Return to Login Console
+                </button>
+              </div>
+            )}
+
+          </div>
+
+          {/* Bottom Controls: Simulator State Swapper */}
+          <div className="border-t border-darkBorder/40 pt-4 space-y-2.5 z-10 select-none">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-darkMuted block text-center">
+              SECURITY UX STATE SIMULATOR (10 SCREENS)
+            </span>
+            <div className="flex flex-wrap justify-center gap-1.5 text-[8.5px] font-mono font-bold">
+              {[
+                { id: "login", label: "1. Login" },
+                { id: "forgot", label: "2. Forgot" },
+                { id: "reset", label: "3. Reset" },
+                { id: "locked", label: "4. Locked" },
+                { id: "unauthorized", label: "5. Denied" },
+                { id: "expired", label: "6. Expired" },
+                { id: "logout", label: "7. Logout" },
+                { id: "mfa", label: "8. MFA Setup" },
+                { id: "invite", label: "9. Invite" },
+                { id: "onboarding", label: "10. Walkthrough" }
+              ].map(stateBtn => (
+                <button
+                  key={stateBtn.id}
+                  type="button"
+                  onClick={() => setAuthView(stateBtn.id as any)}
+                  className={`px-2 py-1 border transition-all cursor-pointer rounded ${
+                    authView === stateBtn.id
+                      ? "bg-neonIndigo/20 border-neonIndigo text-neonIndigo"
+                      : "bg-darkPanel/20 border-darkBorder text-darkMuted hover:text-gray-200"
+                  }`}
+                >
+                  {stateBtn.label}
                 </button>
               ))}
             </div>
@@ -509,16 +1041,31 @@ function App() {
       case "agents":
         return <AgentDashboard backendUrl="http://localhost:8000" />;
       case "worker":
+        if (currentUser?.role !== "admin") {
+          return <PermissionDenied requiredPermission="Administrator queue clearance (canViewSystemQueues)" onGoBack={() => setActiveTab("hub")} />;
+        }
         return <WorkerMonitor />;
       case "observability":
+        if (!permissions.canAccessTelemetry) {
+          return <PermissionDenied requiredPermission="Analyst telemetry clearance (canAccessTelemetry)" onGoBack={() => setActiveTab("hub")} />;
+        }
         return <ObservabilityDashboard backendUrl="http://localhost:8000" />;
       case "review":
+        if (!permissions.canReviewInvoices) {
+          return <PermissionDenied requiredPermission="Auditor review clearance (canReviewInvoices)" onGoBack={() => setActiveTab("hub")} />;
+        }
         return <ReviewQueueDashboard backendUrl="http://localhost:8000" />;
       case "events":
+        if (currentUser?.role !== "admin" && currentUser?.role !== "compliance_officer") {
+          return <PermissionDenied requiredPermission="Admin/Compliance event bus clearance (canViewEvents)" onGoBack={() => setActiveTab("hub")} />;
+        }
         return <EventDashboard />;
       case "notifications":
         return <NotificationDashboard />;
       case "auth":
+        if (!permissions.canViewUsers) {
+          return <PermissionDenied requiredPermission="Administrator privilege (canViewUsers)" onGoBack={() => setActiveTab("hub")} />;
+        }
         return <AuthDashboard />;
       case "automation":
         return (
@@ -559,13 +1106,25 @@ function App() {
 
             <div className="mt-4">
               {automationSubTab === "finance" && (
-                <FinanceDashboard backendUrl="http://localhost:8000" />
+                !permissions.canAccessFinance ? (
+                  <PermissionDenied requiredPermission="Finance Manager clearance (canAccessFinance)" onGoBack={() => setAutomationSubTab("workflows")} />
+                ) : (
+                  <FinanceDashboard backendUrl="http://localhost:8000" />
+                )
               )}
               {automationSubTab === "crm" && (
-                <CrmDashboard backendUrl="http://localhost:8000" />
+                !permissions.canAccessCRM ? (
+                  <PermissionDenied requiredPermission="Sales Representative clearance (canAccessCRM)" onGoBack={() => setAutomationSubTab("workflows")} />
+                ) : (
+                  <CrmDashboard backendUrl="http://localhost:8000" />
+                )
               )}
               {automationSubTab === "workflows" && (
-                <WorkflowDashboard backendUrl="http://localhost:8000" />
+                !permissions.canRunWorkflows ? (
+                  <PermissionDenied requiredPermission="Workflow Execution clearance (canRunWorkflows)" onGoBack={() => setActiveTab("hub")} />
+                ) : (
+                  <WorkflowDashboard backendUrl="http://localhost:8000" />
+                )
               )}
             </div>
           </div>
@@ -947,7 +1506,7 @@ function App() {
       apiConnected={apiConnected}
       aiStatus={aiStatus}
       currentUser={currentUser}
-      onLogout={handleLogout}
+      onLogout={logout}
     >
       {/* Dynamic Module content area */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1">
@@ -998,6 +1557,108 @@ function App() {
         onClose={() => setSelectedDocId(null)}
         backendUrl="http://localhost:8000"
       />
+
+      {/* Session Expiring Modal Countdown */}
+      {sessionStatus === "expiring" && (
+        <SessionExpiringModal
+          timeRemaining={sessionTimeRemaining}
+          onExtend={extendSession}
+          onLogout={logout}
+        />
+      )}
+
+      {/* Onboarding Guide Walkthrough Tour */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="max-w-md w-full bg-darkPanel border border-darkBorder rounded-2xl p-6 shadow-2xl space-y-6 relative overflow-hidden animate-scaleIn">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-neonIndigo to-neonTeal" />
+            
+            <div className="flex justify-between items-center border-b border-darkBorder/40 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-neonIndigo" />
+                <h3 className="text-sm font-bold text-gray-200">Onboarding Walkthrough</h3>
+              </div>
+              <span className="text-[10px] font-mono text-darkMuted">Step {onboardingStep + 1} of 4</span>
+            </div>
+
+            <div className="space-y-4 min-h-[140px] flex flex-col justify-center text-xs">
+              {onboardingStep === 0 && (
+                <div className="space-y-2 animate-scaleUp">
+                  <h4 className="font-semibold text-gray-200 text-sm">Welcome to Syntra OS</h4>
+                  <p className="text-xs text-darkMuted leading-relaxed">
+                    Syntra OS is an AI-powered enterprise operations dashboard designed to automate invoices, track CRM pipelines, explore knowledge graphs, and deploy multi-agent swarms.
+                  </p>
+                </div>
+              )}
+              {onboardingStep === 1 && (
+                <div className="space-y-2 animate-scaleUp">
+                  <h4 className="font-semibold text-gray-200 text-sm">Unified Control Sidebar</h4>
+                  <p className="text-xs text-darkMuted leading-relaxed">
+                    Navigate through our custom modules like the **AI Copilot**, **Hybrid Search**, **Knowledge Graph**, and **Business Flows**. Enable **Developer Mode** in the header to view worker queues, telemetry, and security setups.
+                  </p>
+                </div>
+              )}
+              {onboardingStep === 2 && (
+                <div className="space-y-2 animate-scaleUp">
+                  <h4 className="font-semibold text-gray-200 text-sm">Interactive Visualizations</h4>
+                  <p className="text-xs text-darkMuted leading-relaxed">
+                    Construct execution steps visually using our drag-and-drop **Workflow Builder**, or view document relations using force physics simulations in the **Knowledge Graph**.
+                  </p>
+                </div>
+              )}
+              {onboardingStep === 3 && (
+                <div className="space-y-2 animate-scaleUp">
+                  <h4 className="font-semibold text-gray-200 text-sm">Security & IAM Governance</h4>
+                  <p className="text-xs text-darkMuted leading-relaxed">
+                    All operations are guarded by role-based access levels. Watch for warnings, request access elevations, and enjoy secure auto-token renewals automatically.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-darkBorder/40">
+              <button
+                onClick={() => {
+                  setShowOnboarding(false);
+                  localStorage.setItem("syntra_onboarded", "true");
+                }}
+                className="text-xs text-darkMuted hover:text-gray-300 font-semibold cursor-pointer"
+              >
+                Skip Tour
+              </button>
+              
+              <div className="flex gap-2">
+                {onboardingStep > 0 && (
+                  <button
+                    onClick={() => setOnboardingStep(s => s - 1)}
+                    className="px-3 py-1.5 bg-darkBorder/40 hover:bg-darkBorder border border-darkBorder text-gray-300 rounded text-xs font-semibold cursor-pointer"
+                  >
+                    Back
+                  </button>
+                )}
+                {onboardingStep < 3 ? (
+                  <button
+                    onClick={() => setOnboardingStep(s => s + 1)}
+                    className="px-4 py-1.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white rounded text-xs font-semibold cursor-pointer"
+                  >
+                    Next Step
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowOnboarding(false);
+                      localStorage.setItem("syntra_onboarded", "true");
+                    }}
+                    className="px-4 py-1.5 bg-neonTeal hover:bg-neonTeal/85 text-white rounded text-xs font-semibold cursor-pointer"
+                  >
+                    Get Started
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
