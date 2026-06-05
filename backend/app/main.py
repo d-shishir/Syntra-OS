@@ -31,6 +31,10 @@ from modules.multi_agent_system.router import router as agents_router
 from modules.observability.router import router as observability_router
 from modules.integrations.router import router as integrations_router
 from modules.analytics.router import router as analytics_router
+from modules.workforce.router import router as workforce_router
+import modules.workforce.models
+from modules.finance.router import router as finance_router
+import modules.finance.models
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
@@ -149,6 +153,8 @@ app.include_router(observability_router, prefix="/api/v1/observability", tags=["
 app.include_router(reviews_router, prefix="/api/v1/reviews", tags=["Human-in-the-Loop Review Queue"])
 app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Enterprise Integrations Hub"])
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics & Business Intelligence Center"])
+app.include_router(workforce_router, prefix="/api/v1/workforce", tags=["Contractor Onboarding & Global Workforce Automation"])
+app.include_router(finance_router, prefix="/api/v1/finance", tags=["Payroll & Invoice Automation Studio"])
 
 from modules.event_system.router import router as event_system_router
 app.include_router(event_system_router, prefix="/api/v1/events", tags=["Event Bus & Async Job System"])

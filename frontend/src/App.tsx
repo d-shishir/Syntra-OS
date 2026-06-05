@@ -35,6 +35,8 @@ import { SearchDashboard } from "./modules/enterprise-search/SearchDashboard";
 import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
 import { IntegrationsDashboard } from "./modules/integrations/IntegrationsDashboard";
 import { AnalyticsDashboard } from "./modules/analytics/AnalyticsDashboard";
+import { WorkforceDashboard } from "./modules/workforce/WorkforceDashboard";
+import { FinanceStudio } from "./modules/finance/FinanceStudio";
 
 interface SearchResult {
   content: string;
@@ -1051,6 +1053,10 @@ function App() {
         return <IntegrationsDashboard />;
       case "analytics":
         return <AnalyticsDashboard />;
+      case "workforce":
+        return <WorkforceDashboard />;
+      case "finance":
+        return <FinanceStudio />;
       case "observability":
         if (!permissions.canAccessTelemetry) {
           return <PermissionDenied requiredPermission="Analyst telemetry clearance (canAccessTelemetry)" onGoBack={() => setActiveTab("hub")} />;
