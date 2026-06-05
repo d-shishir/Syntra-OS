@@ -151,6 +151,9 @@ with SessionLocal() as db_session:
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
+from modules.api_gateway.error_handlers import register_error_handlers
+register_error_handlers(app)
+
 # Register the new routers
 app.include_router(invoice_automation_router, prefix="/api/v1/invoice-automation", tags=["Invoice & Payroll Automation"])
 app.include_router(workflow_engine_router, prefix="/api/v1/workflows", tags=["AI Workflow Engine"])
