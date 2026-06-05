@@ -53,8 +53,36 @@ class AgentManager:
         tool_executed = None
         
         try:
+            # 0. RBAC and Integration Tool Matching
+            is_integration_task = any(k in task_description.lower() for k in ["slack", "spreadsheet", "sheet", "crm", "salesforce", "email", "mail", "ticket", "update record"])
+            if is_integration_task:
+                user_role = context.get("user_role") or "admin"
+                allowed_roles = ["admin", "finance_manager", "compliance_officer", "ops_manager"]
+                if user_role not in allowed_roles:
+                    raise ValueError(f"RBAC Policy Error: Role '{user_role}' has insufficient privileges to invoke integration tools.")
+                
+                if "slack" in task_description.lower():
+                    channel = context.get("channel") or "#general"
+                    msg_body = context.get("message") or f"Agent {agent_key} dispatched update."
+                    result = tool_registry.execute_tool("slack_node", db, context, channel=channel, message=msg_body)
+                    tool_executed = "slack_node"
+                elif "spreadsheet" in task_description.lower() or "sheet" in task_description.lower():
+                    doc_name = context.get("doc_name") or "System Ledgers"
+                    sheet_range = context.get("sheet_range") or "Sheet1!A1:C10"
+                    result = tool_registry.execute_tool("sheets_node", db, context, doc_name=doc_name, sheet_range=sheet_range)
+                    tool_executed = "sheets_node"
+                elif "crm" in task_description.lower() or "salesforce" in task_description.lower():
+                    result = tool_registry.execute_tool("crm_node", db, context)
+                    tool_executed = "crm_node"
+                elif "email" in task_description.lower() or "mail" in task_description.lower():
+                    result = tool_registry.execute_tool("email_node", db, context)
+                    tool_executed = "email_node"
+                elif "ticket" in task_description.lower() or "update record" in task_description.lower():
+                    result = tool_registry.execute_tool("rest_api_node", db, context)
+                    tool_executed = "rest_api_node"
+
             # 1. RAG Research Tool matching
-            if agent_key == "research_agent" or "rag_search" in agent.get("capabilities", []):
+            elif agent_key == "research_agent" or "rag_search" in agent.get("capabilities", []):
                 query = context.get("query") or task_description
                 limit = context.get("limit", 3)
                 communication_bus.send_message(

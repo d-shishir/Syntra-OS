@@ -153,8 +153,8 @@ def configure_sync(request: ConfigureSyncRequest, current_user: User = Depends(g
     return create_sync_job(request.connector_key, request.direction, request.sync_type)
 
 @router.post("/sync/trigger")
-def trigger_sync(request: TriggerSyncRequest, current_user: User = Depends(get_current_user)):
-    result = run_synchronization_sweep(request.connector_key)
+def trigger_sync(request: TriggerSyncRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = run_synchronization_sweep(request.connector_key, db=db)
     if "status" in result and result["status"] == "error":
         raise HTTPException(status_code=404, detail=result["message"])
     return result

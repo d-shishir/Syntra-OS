@@ -76,6 +76,20 @@ def handle_research_completed(event, db: Session):
         event_id=event.id
     )
 
+def handle_webhook_event(event, db: Session):
+    logger.info(f"Subscriber: Received integrations webhook event: {event.id}")
+    payload = event.payload or {}
+    target_workflow = payload.get("target_workflow")
+    service = payload.get("service")
+    logger.info(f"Subscriber Webhook: Routing to target workflow '{target_workflow}' from service '{service}'")
+    enqueue_job(
+        db=db,
+        job_type="webhook_workflow_trigger",
+        payload=payload,
+        priority="medium",
+        event_id=event.id
+    )
+
 def initialize_subscribers():
     """
     Registers code-level subscriptions.
@@ -86,4 +100,9 @@ def initialize_subscribers():
     event_registry.subscribe("anomaly_detected", handle_anomaly_detected)
     event_registry.subscribe("approval_required", handle_approval_required)
     event_registry.subscribe("research_completed", handle_research_completed)
+    event_registry.subscribe("webhook_Slack_event", handle_webhook_event)
+    event_registry.subscribe("webhook_Gmail_event", handle_webhook_event)
+    event_registry.subscribe("webhook_Salesforce_event", handle_webhook_event)
+    event_registry.subscribe("webhook_GitHub_event", handle_webhook_event)
+    event_registry.subscribe("webhook_Generic_REST_API_event", handle_webhook_event)
     logger.info("Event System: Initialized subscribers successfully.")

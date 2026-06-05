@@ -73,8 +73,82 @@ class ToolRegistry:
             generate_report_tool,
             "Compiles multiple findings and outputs a finalized text summary or file. Input: content, title."
         )
+        self.register_tool(
+            "slack_node",
+            slack_node_tool,
+            "Sends a message notification alert to a Slack channel."
+        )
+        self.register_tool(
+            "email_node",
+            email_node_tool,
+            "Sends an email notification update to specified recipients."
+        )
+        self.register_tool(
+            "webhook_node",
+            webhook_node_tool,
+            "Forwards payloads or event structures to custom webhooks."
+        )
+        self.register_tool(
+            "sheets_node",
+            sheets_node_tool,
+            "Reads or updates spreadsheet document records."
+        )
+        self.register_tool(
+            "crm_node",
+            crm_node_tool,
+            "Queries or updates accounts and leads in the CRM registry."
+        )
+        self.register_tool(
+            "rest_api_node",
+            rest_api_node_tool,
+            "Triggers a generic REST API call to external web endpoints."
+        )
 
 # Tool Implementations
+
+def slack_node_tool(db: Session, context: dict, **kwargs):
+    from modules.integrations.connector_manager import invoke_slack_message
+    channel = kwargs.get("channel") or context.get("channel") or "#general"
+    message = kwargs.get("message") or context.get("message") or "Syntra OS Workflow notification"
+    user_id = context.get("user_id") or "system"
+    return invoke_slack_message(user_id, channel, message)
+
+def email_node_tool(db: Session, context: dict, **kwargs):
+    return send_email_tool(db, context, **kwargs)
+
+def webhook_node_tool(db: Session, context: dict, **kwargs):
+    url = kwargs.get("url") or context.get("webhook_url") or "http://localhost:8000/webhook-mock"
+    payload = kwargs.get("payload") or context.get("payload") or {}
+    logger.info(f"Integration Tool: Forwarding event webhook payload to '{url}'")
+    return {
+        "status": "success",
+        "forwarded_url": url,
+        "payload_size": len(str(payload))
+    }
+
+def sheets_node_tool(db: Session, context: dict, **kwargs):
+    from modules.integrations.connector_manager import invoke_read_spreadsheet
+    doc_name = kwargs.get("doc_name") or context.get("doc_name") or "System Ledgers"
+    sheet_range = kwargs.get("sheet_range") or context.get("sheet_range") or "Sheet1!A1:C10"
+    user_id = context.get("user_id") or "system"
+    return invoke_read_spreadsheet(user_id, doc_name, sheet_range)
+
+def crm_node_tool(db: Session, context: dict, **kwargs):
+    from modules.integrations.connector_manager import invoke_fetch_crm_data
+    user_id = context.get("user_id") or "system"
+    limit = kwargs.get("limit") or context.get("limit") or 5
+    return invoke_fetch_crm_data(user_id, limit)
+
+def rest_api_node_tool(db: Session, context: dict, **kwargs):
+    from modules.integrations.connector_manager import increment_api_usage
+    increment_api_usage("Generic REST API")
+    url = kwargs.get("url") or context.get("api_url") or "https://api.syntra.io/v1/data"
+    logger.info(f"Integration Tool: Calling Generic REST API endpoint: {url}")
+    return {
+        "status": "success",
+        "url": url,
+        "response": {"result_count": 1, "data": [{"id": 1, "value": "custom_data"}]}
+    }
 
 def extract_document_tool(db: Session, context: dict, **kwargs):
     document_id = kwargs.get("document_id") or context.get("document_id")

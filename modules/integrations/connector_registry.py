@@ -3,6 +3,41 @@ import logging
 logger = logging.getLogger(__name__)
 
 CONNECTORS = {
+    "outlook": {
+        "name": "Outlook Mail",
+        "category": "Communication",
+        "description": "Access Outlook calendar details, mail items, and synchronize user inboxes.",
+        "icon": "Mail",
+        "default_scopes": ["Mail.ReadWrite", "Mail.Send"]
+    },
+    "airtable": {
+        "name": "Airtable",
+        "category": "Productivity",
+        "description": "Synchronize records dynamically, audit tables, and listen to automation hooks.",
+        "icon": "Grid",
+        "default_scopes": ["data.records:read", "data.records:write"]
+    },
+    "notion": {
+        "name": "Notion",
+        "category": "Productivity",
+        "description": "Read workspace pages, map block elements, and append logs to databases.",
+        "icon": "Grid",
+        "default_scopes": ["read", "write"]
+    },
+    "gitlab": {
+        "name": "GitLab",
+        "category": "Development",
+        "description": "Track pipeline runs, trigger webhook issues, and audit repository state.",
+        "icon": "GitBranch",
+        "default_scopes": ["api", "read_repository"]
+    },
+    "dropbox": {
+        "name": "Dropbox",
+        "category": "Storage",
+        "description": "Retrieve document structures, upload files, and poll directory revisions.",
+        "icon": "HardDrive",
+        "default_scopes": ["files.metadata.read", "files.content.write"]
+    },
     "slack": {
         "name": "Slack",
         "category": "Communication",

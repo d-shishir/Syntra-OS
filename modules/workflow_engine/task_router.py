@@ -17,7 +17,13 @@ class TaskRouter:
         "send_email": "send_email",
         "notify_team": "send_email",
         "generate_report": "generate_report",
-        "store_results": "generate_report"
+        "store_results": "generate_report",
+        "slack_node": "slack_node",
+        "email_node": "email_node",
+        "webhook_node": "webhook_node",
+        "sheets_node": "sheets_node",
+        "crm_node": "crm_node",
+        "rest_api_node": "rest_api_node"
     }
 
     def route_and_execute(self, db: Session, step_name: str, context: dict) -> dict:
@@ -44,14 +50,29 @@ class TaskRouter:
             kwargs["document_id"] = context.get("document_id")
         elif tool_name == "send_email":
             kwargs["recipient"] = context.get("recipient") or "team@syntra.os"
-            # Format custom subject/body if they exist, or use findings from context
             kwargs["subject"] = context.get("subject") or f"Syntra OS Workflow Alert: {step_name}"
             kwargs["body"] = context.get("body") or f"Execution context details: {str(context.get('summary') or context.get('extracted_data') or 'completed successfully')}"
         elif tool_name == "generate_report":
-            # Extract content from previous outputs if present
             findings = context.get("summary") or context.get("anomalies") or context.get("extracted_data") or "No recent step findings."
             kwargs["content"] = str(findings)
             kwargs["title"] = context.get("report_title") or "Syntra OS Workflow Run Summary Report"
+        elif tool_name == "slack_node":
+            kwargs["channel"] = context.get("channel") or "#general"
+            kwargs["message"] = context.get("message") or "Syntra OS notification update."
+        elif tool_name == "email_node":
+            kwargs["recipient"] = context.get("recipient") or "admin@syntra.io"
+            kwargs["subject"] = context.get("subject") or "Syntra Integration Notification"
+            kwargs["body"] = context.get("body") or "Workspace updates generated."
+        elif tool_name == "webhook_node":
+            kwargs["url"] = context.get("webhook_url") or "http://localhost:8000/webhook-mock"
+            kwargs["payload"] = context.get("payload") or {"data": "default_workflow_payload"}
+        elif tool_name == "sheets_node":
+            kwargs["doc_name"] = context.get("doc_name") or "System Ledgers"
+            kwargs["sheet_range"] = context.get("sheet_range") or "Sheet1!A1:C10"
+        elif tool_name == "crm_node":
+            kwargs["limit"] = context.get("limit", 5)
+        elif tool_name == "rest_api_node":
+            kwargs["url"] = context.get("api_url") or "https://api.syntra.io/v1/data"
             
         # Execute the tool
         result = tool_registry.execute_tool(tool_name, db, context, **kwargs)

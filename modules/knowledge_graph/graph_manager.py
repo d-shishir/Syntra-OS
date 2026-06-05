@@ -57,6 +57,7 @@ class GraphManager:
                     db.commit()
             except Exception as e:
                 logger.warning(f"Failed to update graph node embedding: {str(e)}")
+                db.rollback()
 
         return node
 
