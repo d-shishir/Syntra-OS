@@ -30,6 +30,7 @@ from modules.background_worker.router import router as worker_router
 from modules.multi_agent_system.router import router as agents_router
 from modules.observability.router import router as observability_router
 from modules.integrations.router import router as integrations_router
+from modules.analytics.router import router as analytics_router
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
@@ -147,6 +148,7 @@ app.include_router(agents_router, prefix="/api/v1/agents", tags=["Multi-Agent AI
 app.include_router(observability_router, prefix="/api/v1/observability", tags=["Observability & Monitoring"])
 app.include_router(reviews_router, prefix="/api/v1/reviews", tags=["Human-in-the-Loop Review Queue"])
 app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Enterprise Integrations Hub"])
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics & Business Intelligence Center"])
 
 from modules.event_system.router import router as event_system_router
 app.include_router(event_system_router, prefix="/api/v1/events", tags=["Event Bus & Async Job System"])

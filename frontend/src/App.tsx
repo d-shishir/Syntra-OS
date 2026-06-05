@@ -34,6 +34,7 @@ import { GraphDashboard } from "./modules/knowledge-graph/GraphDashboard";
 import { SearchDashboard } from "./modules/enterprise-search/SearchDashboard";
 import { ResearchDashboard } from "./modules/ai-research/ResearchDashboard";
 import { IntegrationsDashboard } from "./modules/integrations/IntegrationsDashboard";
+import { AnalyticsDashboard } from "./modules/analytics/AnalyticsDashboard";
 
 interface SearchResult {
   content: string;
@@ -1048,6 +1049,8 @@ function App() {
         return <WorkerMonitor />;
       case "integrations":
         return <IntegrationsDashboard />;
+      case "analytics":
+        return <AnalyticsDashboard />;
       case "observability":
         if (!permissions.canAccessTelemetry) {
           return <PermissionDenied requiredPermission="Analyst telemetry clearance (canAccessTelemetry)" onGoBack={() => setActiveTab("hub")} />;
