@@ -41,6 +41,8 @@ from modules.organizations.router import router as organizations_router
 import modules.organizations.models
 from modules.api_gateway.api_router import router as api_gateway_router
 import modules.api_gateway.models
+from modules.executive.router import router as executive_router
+import modules.executive.models
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
@@ -164,6 +166,7 @@ app.include_router(finance_router, prefix="/api/v1/finance", tags=["Payroll & In
 app.include_router(governance_router, prefix="/api/v1/governance", tags=["AI Governance, Compliance & Risk Center"])
 app.include_router(organizations_router, prefix="/api/v1/organizations", tags=["Organizations & Workspaces"])
 app.include_router(api_gateway_router, prefix="/api/v1/developer", tags=["Developer Platform & API Gateway"])
+app.include_router(executive_router, prefix="/api/v1/executive", tags=["Executive Command Center (CEO Control Room)"])
 
 from modules.event_system.router import router as event_system_router
 app.include_router(event_system_router, prefix="/api/v1/events", tags=["Event Bus & Async Job System"])

@@ -8,7 +8,7 @@ import {
 export type WorkspaceTab = 
   | "hub" | "copilot" | "graph" | "search" | "research" | "assistant" 
   | "automation" | "worker" | "agents" | "observability" | "review" 
-  | "events" | "notifications" | "auth" | "integrations" | "analytics" | "workforce" | "finance" | "governance" | "organizations" | "developer";
+  | "events" | "notifications" | "auth" | "integrations" | "analytics" | "workforce" | "finance" | "governance" | "organizations" | "developer" | "executive";
 
 interface AppShellProps {
   activeTab: WorkspaceTab;
@@ -40,6 +40,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     {
       title: "Operations",
       items: [
+        { id: "executive", label: "CEO Control Room", icon: Shield },
         { id: "hub", label: "Control Center", icon: Cpu },
         { id: "review", label: "Human Review", icon: ShieldAlert },
         { id: "analytics", label: "Analytics BI", icon: Activity },

@@ -40,6 +40,7 @@ import { FinanceStudio } from "./modules/finance/FinanceStudio";
 import { GovernanceCenter } from "./modules/governance/GovernanceCenter";
 import { OrgAdminCenter } from "./modules/organizations/OrgAdminCenter";
 import { DeveloperPortal } from "./modules/developer/DeveloperPortal";
+import { ExecutiveDashboard } from "./modules/executive/ExecutiveDashboard";
 
 interface SearchResult {
   content: string;
@@ -1058,6 +1059,8 @@ function App() {
         return <AnalyticsDashboard />;
       case "workforce":
         return <WorkforceDashboard />;
+      case "executive":
+        return <ExecutiveDashboard />;
       case "finance":
         return <FinanceStudio />;
       case "governance":
