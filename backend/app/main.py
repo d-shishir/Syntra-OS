@@ -35,6 +35,12 @@ from modules.workforce.router import router as workforce_router
 import modules.workforce.models
 from modules.finance.router import router as finance_router
 import modules.finance.models
+from modules.governance.router import router as governance_router
+import modules.governance.models
+from modules.organizations.router import router as organizations_router
+import modules.organizations.models
+from modules.api_gateway.api_router import router as api_gateway_router
+import modules.api_gateway.models
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
@@ -155,6 +161,9 @@ app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["En
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics & Business Intelligence Center"])
 app.include_router(workforce_router, prefix="/api/v1/workforce", tags=["Contractor Onboarding & Global Workforce Automation"])
 app.include_router(finance_router, prefix="/api/v1/finance", tags=["Payroll & Invoice Automation Studio"])
+app.include_router(governance_router, prefix="/api/v1/governance", tags=["AI Governance, Compliance & Risk Center"])
+app.include_router(organizations_router, prefix="/api/v1/organizations", tags=["Organizations & Workspaces"])
+app.include_router(api_gateway_router, prefix="/api/v1/developer", tags=["Developer Platform & API Gateway"])
 
 from modules.event_system.router import router as event_system_router
 app.include_router(event_system_router, prefix="/api/v1/events", tags=["Event Bus & Async Job System"])

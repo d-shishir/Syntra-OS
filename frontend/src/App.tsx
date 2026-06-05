@@ -37,6 +37,9 @@ import { IntegrationsDashboard } from "./modules/integrations/IntegrationsDashbo
 import { AnalyticsDashboard } from "./modules/analytics/AnalyticsDashboard";
 import { WorkforceDashboard } from "./modules/workforce/WorkforceDashboard";
 import { FinanceStudio } from "./modules/finance/FinanceStudio";
+import { GovernanceCenter } from "./modules/governance/GovernanceCenter";
+import { OrgAdminCenter } from "./modules/organizations/OrgAdminCenter";
+import { DeveloperPortal } from "./modules/developer/DeveloperPortal";
 
 interface SearchResult {
   content: string;
@@ -1057,6 +1060,12 @@ function App() {
         return <WorkforceDashboard />;
       case "finance":
         return <FinanceStudio />;
+      case "governance":
+        return <GovernanceCenter />;
+      case "organizations":
+        return <OrgAdminCenter />;
+      case "developer":
+        return <DeveloperPortal />;
       case "observability":
         if (!permissions.canAccessTelemetry) {
           return <PermissionDenied requiredPermission="Analyst telemetry clearance (canAccessTelemetry)" onGoBack={() => setActiveTab("hub")} />;
