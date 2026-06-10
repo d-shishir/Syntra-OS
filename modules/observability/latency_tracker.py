@@ -46,8 +46,13 @@ def track_latency(step_name: str, module: Optional[str] = None):
                             },
                             db=db
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            message=f"Failed to write latency trace step to DB: {str(e)}",
+                            module=module or "latency_tracker",
+                            trace_id=trace_id,
+                            db=db
+                        )
                 
                 # Log structured timing details
                 logger.info(

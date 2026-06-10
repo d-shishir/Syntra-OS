@@ -16,19 +16,23 @@ def save_document_chunks(db: Session, document_id: str, chunks: list[dict], embe
         db.execute(delete_query, {"doc_id": document_id})
         
         # Insert chunks in batch
-        insert_query = text("""
-            INSERT INTO document_chunks (document_id, chunk_index, content, embedding)
-            VALUES (:doc_id, :idx, :content, CAST(:emb AS vector))
-        """)
-        
-        for idx, chunk in enumerate(chunks):
-            vector_str = f"[{','.join(str(v) for v in embeddings[idx])}]"
-            db.execute(insert_query, {
-                "doc_id": document_id,
-                "idx": chunk["chunk_index"],
-                "content": chunk["chunk_text"],
-                "emb": vector_str
-            })
+        if chunks:
+            insert_query = text("""
+                INSERT INTO document_chunks (document_id, chunk_index, content, embedding)
+                VALUES (:doc_id, :idx, :content, CAST(:emb AS vector))
+            """)
+            
+            params = []
+            for idx, chunk in enumerate(chunks):
+                vector_str = f"[{','.join(str(v) for v in embeddings[idx])}]"
+                params.append({
+                    "doc_id": document_id,
+                    "idx": chunk["chunk_index"],
+                    "content": chunk["chunk_text"],
+                    "emb": vector_str
+                })
+                
+            db.execute(insert_query, params)
             
         db.commit()
         logger.info(f"Successfully chunked and saved vector embeddings in pgvector for document: {document_id}")
@@ -38,7 +42,13 @@ def save_document_chunks(db: Session, document_id: str, chunks: list[dict], embe
         logger.exception(f"Failed to save document chunks into vector store: {str(e)}")
         raise e
 
-def search_similar_chunks(db: Session, query_vector: list[float], limit: int = 5) -> list[dict]:
+def search_similar_chunks(
+    db: Session,
+    query_vector: list[float],
+    limit: int = 5,
+    organization_id: str | None = None,
+    workspace_id: str | None = None
+) -> list[dict]:
     """
     Performs a native pgvector similarity search against document chunks using
     the `<=>` cosine distance operator (where 1 - distance equals similarity).
@@ -54,13 +64,17 @@ def search_similar_chunks(db: Session, query_vector: list[float], limit: int = 5
                 1 - (c.embedding <=> CAST(:emb AS vector)) AS similarity
             FROM document_chunks c
             JOIN documents d ON c.document_id = d.id
+            WHERE (:org_id IS NULL OR d.organization_id = CAST(:org_id AS UUID))
+              AND (:ws_id IS NULL OR d.workspace_id = CAST(:ws_id AS UUID))
             ORDER BY c.embedding <=> CAST(:emb AS vector)
             LIMIT :limit
         """)
         
         result = db.execute(search_query, {
             "emb": vector_str,
-            "limit": limit
+            "limit": limit,
+            "org_id": str(organization_id) if organization_id else None,
+            "ws_id": str(workspace_id) if workspace_id else None
         })
         
         results_list = []

@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import secrets
 import logging
+import bcrypt
 from sqlalchemy.orm import Session
 from modules.auth_system.models import User
 from modules.auth_system.jwt_service import create_access_token
@@ -11,16 +12,30 @@ from modules.auth_system.audit_security import log_security_action
 logger = logging.getLogger(__name__)
 
 def hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
-    return f"{salt}${key.hex()}"
+    """
+    Hashes a password using the secure bcrypt scheme.
+    """
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8')
 
 def verify_password(password: str, hashed_password: str) -> bool:
+    """
+    Verifies a password against a hash, falling back to legacy PBKDF2 for compatibility.
+    """
     try:
-        salt, key_hex = hashed_password.split('$')
-        key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
-        return hmac.compare_digest(key.hex(), key_hex)
-    except Exception:
+        # Check if the hash is in our custom legacy pbkdf2 format (contains exactly one '$' and doesn't start with '$')
+        is_legacy = hashed_password.count('$') == 1 and not hashed_password.startswith('$')
+        if is_legacy:
+            salt, key_hex = hashed_password.split('$')
+            key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+            return hmac.compare_digest(key.hex(), key_hex)
+        
+        # Verify using bcrypt
+        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception as e:
+        logger.warning(f"Password verification failed: {str(e)}")
         return False
 
 def authenticate_user(db: Session, email: str, password: str, ip_address: str | None = None) -> dict | None:

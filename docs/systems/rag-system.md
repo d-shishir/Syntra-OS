@@ -10,7 +10,7 @@ This document details the layout, query sequences, prompt instructions, and refe
 [User Q&A Query]
        │
        ▼
-  1. [Embed query] ──► (768-dimensional BAAI vector representation)
+  1. [Embed query] ──► (1536-dimensional OpenAI vector representation)
        │
        ▼
   2. [pgvector search] ──► (Retrieve Top-4 closest document chunks via HNSW index)

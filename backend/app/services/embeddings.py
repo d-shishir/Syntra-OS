@@ -27,7 +27,7 @@ def generate_openai_embedding(text: str) -> list[float]:
 
 def generate_mock_embedding(text: str) -> list[float]:
     """
-    Generates a deterministic 768-dimensional mock vector using pure Python.
+    Generates a deterministic 1536-dimensional mock vector using pure Python.
     It splits the text into lowercase words, seeds random number generators,
     and normalizes the vector.
     """

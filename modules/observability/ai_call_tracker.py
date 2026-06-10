@@ -1,6 +1,9 @@
+import logging
 from sqlalchemy.orm import Session
 from .models import SystemMetric
 from .trace_manager import trace_manager
+
+logger = logging.getLogger(__name__)
 
 class AICallTracker:
     """
@@ -16,7 +19,8 @@ class AICallTracker:
             )
             db.add(metric)
             db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Failed to record token usage metric: {str(e)}")
 
 ai_call_tracker = AICallTracker()

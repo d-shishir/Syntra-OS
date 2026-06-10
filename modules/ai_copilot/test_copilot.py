@@ -19,8 +19,13 @@ class TestAiCopilot(unittest.TestCase):
     def setUp(self):
         self.db = SessionLocal()
         Base.metadata.create_all(bind=engine)
+        from app.config import settings
+        self.old_api_key = settings.OPENAI_API_KEY
+        settings.OPENAI_API_KEY = None
 
     def tearDown(self):
+        from app.config import settings
+        settings.OPENAI_API_KEY = self.old_api_key
         self.db.close()
 
     def test_intent_parser(self):

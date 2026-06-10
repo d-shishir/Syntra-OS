@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Float, DateTime, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
-from backend.app.database import Base
+from app.database import Base
 
 class ResearchTask(Base):
     __tablename__ = "research_tasks"

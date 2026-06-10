@@ -43,6 +43,7 @@ from modules.api_gateway.api_router import router as api_gateway_router
 import modules.api_gateway.models
 from modules.executive.router import router as executive_router
 import modules.executive.models
+import modules.integrations.models
 from app.database import engine, Base
 import modules.workflow_engine.models  # Ensures models are imported for metadata creation
 import modules.crm_intelligence.models  # Ensures crm models are imported for metadata creation
@@ -58,42 +59,10 @@ import modules.enterprise_search.models  # Ensures search query logs models are 
 import modules.ai_research_engine.models  # Ensures research engine models are imported for metadata creation
 from modules.human_review_system.router import router as reviews_router
 from modules.auth_system.access_policies import get_current_user
+from modules.organizations.tenant_engine import get_tenant_context, TenantContext
 
 # Auto create tables if not exists
 Base.metadata.create_all(bind=engine)
-try:
-    from backend.app.database import Base as BackendBase
-    BackendBase.metadata.create_all(bind=engine)
-except Exception as e:
-    logging.getLogger(__name__).warning(f"Could not initialize backend.app.database tables: {e}")
-
-
-# Migration: Add columns, indexes, and constraints if they don't exist
-from sqlalchemy import text
-with engine.connect() as conn:
-    try:
-        conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"))
-        conn.commit()
-    except Exception:
-        pass
-        
-    try:
-        conn.execute(text("ALTER TABLE graph_nodes ADD COLUMN embedding vector(1536)"))
-        conn.commit()
-    except Exception:
-        pass
-
-    try:
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id ON document_chunks(document_id)"))
-        conn.commit()
-    except Exception:
-        pass
-
-    try:
-        conn.execute(text("ALTER TABLE user_sessions ADD CONSTRAINT fk_user_sessions_users FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"))
-        conn.commit()
-    except Exception:
-        pass
 
 # Configure logging
 logging.basicConfig(
@@ -120,8 +89,11 @@ def integrate_document_pipeline_handler(payload: dict, db: Session):
 
 register_handler("document_ingestion", integrate_document_pipeline_handler)
 
-# Start background worker daemon
-start_worker()
+# Start background worker daemon if requested via env (for local convenience)
+if os.getenv("RUN_IN_PROCESS_WORKER", "false").lower() == "true":
+    start_worker()
+else:
+    logger.info("Decoupled Worker Mode: In-process background worker thread is disabled. Run the worker as a separate process.")
 
 # Start Event Bus and Async Job system background workers
 from modules.event_system.event_subscribers import initialize_subscribers
@@ -325,7 +297,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    tenant: TenantContext = Depends(get_tenant_context)
 ):
     """
     Accepts a PDF document, extracts text, stores it in PostgreSQL database,
@@ -351,7 +323,9 @@ async def upload_document(
             filename=file.filename,
             content=extracted_text,
             file_size=file_size,
-            mime_type=file.content_type or "application/pdf"
+            mime_type=file.content_type or "application/pdf",
+            organization_id=tenant.organization_id,
+            workspace_id=tenant.workspace_id
         )
         
         db.add(db_doc)
@@ -398,17 +372,35 @@ async def upload_document(
         )
 
 @app.get("/documents", response_model=list[DocumentResponse])
-def get_documents(is_deleted: bool = False, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_documents(is_deleted: bool = False, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Retrieve list of uploaded documents (excluding heavy text content for performance).
     """
     try:
-        documents = db.query(Document).filter(Document.is_deleted == is_deleted).order_by(Document.created_at.desc()).all()
+        query = db.query(Document).filter(
+            Document.is_deleted == is_deleted,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        documents = query.order_by(Document.created_at.desc()).all()
         
         # Get list of vectorized document IDs in a single query
         from sqlalchemy import text
         vectorized_ids = {
-            row[0] for row in db.execute(text("SELECT DISTINCT document_id FROM document_chunks")).fetchall()
+            row[0] for row in db.execute(
+                text("""
+                    SELECT DISTINCT c.document_id 
+                    FROM document_chunks c
+                    JOIN documents d ON c.document_id = d.id
+                    WHERE d.organization_id = :org_id
+                      AND (:ws_id IS NULL OR d.workspace_id = :ws_id)
+                """),
+                {
+                    "org_id": tenant.organization_id,
+                    "ws_id": tenant.workspace_id
+                }
+            ).fetchall()
         }
         
         result = []
@@ -437,12 +429,18 @@ def get_documents(is_deleted: bool = False, db: Session = Depends(get_db), curre
         )
 
 @app.post("/documents/{document_id}/trash")
-def trash_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def trash_document(document_id: str, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Move a document to the trash bin (soft delete).
     """
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -451,6 +449,8 @@ def trash_document(document_id: str, db: Session = Depends(get_db), current_user
         document.is_deleted = True
         db.commit()
         return {"status": "success", "message": "Document moved to trash"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.exception("Failed to trash document")
@@ -460,12 +460,18 @@ def trash_document(document_id: str, db: Session = Depends(get_db), current_user
         )
 
 @app.post("/documents/{document_id}/restore")
-def restore_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def restore_document(document_id: str, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Restore a document from the trash bin.
     """
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -474,6 +480,8 @@ def restore_document(document_id: str, db: Session = Depends(get_db), current_us
         document.is_deleted = False
         db.commit()
         return {"status": "success", "message": "Document restored from trash"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.exception("Failed to restore document")
@@ -483,7 +491,12 @@ def restore_document(document_id: str, db: Session = Depends(get_db), current_us
         )
 
 @app.delete("/documents/{document_id}")
-def delete_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def delete_document(
+    document_id: str, 
+    db: Session = Depends(get_db), 
+    current_user = Depends(get_current_user),
+    tenant: TenantContext = Depends(get_tenant_context)
+):
     """
     Permanently delete a document from the database (cascades to related tables).
     """
@@ -493,7 +506,13 @@ def delete_document(document_id: str, db: Session = Depends(get_db), current_use
             detail="Access denied. Only system administrator or compliance officer accounts can delete documents."
         )
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -512,12 +531,18 @@ def delete_document(document_id: str, db: Session = Depends(get_db), current_use
 
 
 @app.get("/documents/{document_id}", response_model=DocumentDetailResponse)
-def get_document_by_id(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_document_by_id(document_id: str, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Get detailed document data including full extracted text.
     """
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -555,12 +580,18 @@ def get_document_by_id(document_id: str, db: Session = Depends(get_db), current_
         )
 
 @app.post("/documents/{document_id}/extract", response_model=DocumentDetailResponse)
-def extract_document_data(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def extract_document_data(document_id: str, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Extract structured JSON from raw document content and save it in the database.
     """
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -621,13 +652,19 @@ def extract_document_data(document_id: str, db: Session = Depends(get_db), curre
         )
 
 @app.post("/documents/{document_id}/index")
-def index_document(document_id: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def index_document(document_id: str, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Splits the document text into semantic chunks, generates vector embeddings for each chunk,
     and indexes them in the pgvector database.
     """
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.organization_id == tenant.organization_id
+        )
+        if tenant.workspace_id:
+            query = query.filter(Document.workspace_id == tenant.workspace_id)
+        document = query.first()
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -676,7 +713,7 @@ def index_document(document_id: str, db: Session = Depends(get_db), current_user
         )
 
 @app.get("/search", response_model=list[SearchResultResponse])
-def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     Semantic search over indexed document chunks using cosine similarity.
     """
@@ -693,7 +730,13 @@ def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db), 
         query_vector = get_embedding(query)
         
         # 2. Retrieve top matching chunks using pgvector distance operations
-        results = search_similar_chunks(db, query_vector, limit=limit)
+        results = search_similar_chunks(
+            db, 
+            query_vector, 
+            limit=limit,
+            organization_id=tenant.organization_id,
+            workspace_id=tenant.workspace_id
+        )
         return results
         
     except Exception as e:
@@ -704,7 +747,7 @@ def search_documents(query: str, limit: int = 5, db: Session = Depends(get_db), 
         )
 
 @app.post("/chat-with-documents", response_model=ChatResponse)
-def chat_with_documents(request: ChatRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def chat_with_documents(request: ChatRequest, db: Session = Depends(get_db), tenant: TenantContext = Depends(get_tenant_context)):
     """
     RAG QA Chat endpoint: retrieves context from pgvector, prompts LLM,
     and returns a grounded answer alongside expandable citations.
@@ -717,7 +760,12 @@ def chat_with_documents(request: ChatRequest, db: Session = Depends(get_db), cur
         
     try:
         logger.info(f"RAG chat request received: {request.query}")
-        response = ask_question_rag(db, request.query)
+        response = ask_question_rag(
+            db, 
+            request.query,
+            organization_id=tenant.organization_id,
+            workspace_id=tenant.workspace_id
+        )
         return response
     except Exception as e:
         logger.exception("RAG chat query execution failed")

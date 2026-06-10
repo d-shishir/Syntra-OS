@@ -2,7 +2,7 @@ import json
 import re
 import logging
 from sqlalchemy.orm import Session
-from backend.app.config import settings
+from app.config import settings
 from modules.observability.ai_call_tracker import ai_call_tracker
 
 logger = logging.getLogger(__name__)

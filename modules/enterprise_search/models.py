@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Integer, DateTime, func, JSON, Float
 from sqlalchemy.dialects.postgresql import UUID
-from backend.app.database import Base
+from app.database import Base
 
 class SearchQueryLog(Base):
     __tablename__ = "search_query_logs"

@@ -5,15 +5,15 @@ services:
     image: ankane/pgvector:latest
     container_name: syntra_db
     environment:
-      POSTGRES_DB: syntra_db
+      POSTGRES_DB: doc_ingest
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d syntra_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d doc_ingest"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,7 +24,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: syntra_backend
     environment:
-      - DATABASE_URL=postgresql://postgres:password123@db:5432/syntra_db
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/doc_ingest
       - ENVIRONMENT=production
     ports:
       - "8000:8000"

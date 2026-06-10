@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.database import get_db
+from app.database import get_db
 from modules.knowledge_graph.graph_manager import GraphManager
 from modules.knowledge_graph.graph_query_engine import GraphQueryEngine
 from modules.knowledge_graph.models import GraphNode, GraphEdge

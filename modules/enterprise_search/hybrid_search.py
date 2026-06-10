@@ -3,9 +3,9 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
-from backend.app.models import Document
-from backend.app.services.vector_store import search_similar_chunks
-from backend.app.services.embeddings import get_embedding
+from app.models import Document
+from app.services.vector_store import search_similar_chunks
+from app.services.embeddings import get_embedding
 from modules.invoice_automation.models import Invoice
 from modules.workflow_engine.models import WorkflowRun
 from modules.human_review_system.models import ApprovalRequest

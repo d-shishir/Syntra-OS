@@ -10,7 +10,7 @@ from .cache import cache_store
 
 logger = logging.getLogger(__name__)
 
-def optimize_retrieval(db: Session, raw_query: str) -> dict:
+def optimize_retrieval(db: Session, raw_query: str, organization_id = None, workspace_id = None) -> dict:
     """
     Production retrieval optimizer pipeline:
     1. Query Rewrite (conversational -> keyword search query)
@@ -39,7 +39,7 @@ def optimize_retrieval(db: Session, raw_query: str) -> dict:
     rewrite_time = (time.perf_counter() - rewrite_start) * 1000
     
     # Check search cache first using the rewritten query as cache key
-    cache_key = f"search:{rewritten_query}"
+    cache_key = f"search:{organization_id}:{workspace_id}:{rewritten_query}"
     cached_result = cache_store.get(cache_key)
     
     if cached_result:
@@ -62,7 +62,7 @@ def optimize_retrieval(db: Session, raw_query: str) -> dict:
     
     # 3. Vector Database Retrieval
     db_start = time.perf_counter()
-    raw_results = search_similar_chunks(db, query_vector, limit=settings.VECTOR_SEARCH_LIMIT)
+    raw_results = search_similar_chunks(db, query_vector, limit=settings.VECTOR_SEARCH_LIMIT, organization_id=organization_id, workspace_id=workspace_id)
     db_time = (time.perf_counter() - db_start) * 1000
     
     # 4. Reranking

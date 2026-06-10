@@ -72,7 +72,7 @@ def execute_mock_rag(query: str, chunks: list[dict]) -> str:
     else:
         return "Not found in documents"
 
-def ask_question_rag(db: Session, query: str) -> dict:
+def ask_question_rag(db: Session, query: str, organization_id = None, workspace_id = None) -> dict:
     """
     Full RAG Pipeline Orchestrator:
     1. Check RAG Answer cache.
@@ -92,7 +92,7 @@ def ask_question_rag(db: Session, query: str) -> dict:
         total_start = time.perf_counter()
         
         # 1. RAG Cache Lookup
-        chat_cache_key = f"chat:{query_str}"
+        chat_cache_key = f"chat:{organization_id}:{workspace_id}:{query_str}"
         cached_response = cache_store.get(chat_cache_key)
         if cached_response:
             logger.info(f"RAG answer cache HIT for query: '{query_str}'", module="rag", db=db)
@@ -113,7 +113,7 @@ def ask_question_rag(db: Session, query: str) -> dict:
             return response
 
         # 2. Optimized Retrieval
-        retrieval_res = optimize_retrieval(db, query_str)
+        retrieval_res = optimize_retrieval(db, query_str, organization_id=organization_id, workspace_id=workspace_id)
         rewritten_query = retrieval_res["query_rewritten"]
         chunks = retrieval_res["chunks"]
         ret_metrics = retrieval_res["metrics"]

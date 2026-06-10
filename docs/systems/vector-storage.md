@@ -7,9 +7,9 @@ This document outlines the design, prompt schemas, indexing strategies, and data
 ## 🛠️ Architecture Overview
 
 ```text
-[PDF Text Input] ──► [Chunker (600 chars/150 overlap)] ──► [Embeddings API (768 dims: BAAI)]
-                                                                    │
-                                                                    ▼
+[PDF Text Input] ──► [Chunker (600 chars/150 overlap)] ──► [Embeddings API (1536 dims: OpenAI)]
+                                                                     │
+                                                                     ▼
 [Search Queries] ──► [Query Embedding] ──► [pgvector Search] ◄── [PostgreSQL]
                                                    │
                                                    ▼
@@ -18,21 +18,17 @@ This document outlines the design, prompt schemas, indexing strategies, and data
 
 ---
 
-## 🚀 Model Choice: BAAI BGE-Base vs. OpenAI Text Embeddings
+## 🚀 Model Choice: OpenAI Text Embeddings (1536 dimensions)
 
-To optimize performance and minimize resource constraints, Syntra OS uses **BAAI bge-base-en-v1.5** (768 dimensions) via OpenRouter rather than standard **OpenAI text-embedding-3-small** (1536 dimensions).
+To optimize retrieval performance and ensure maximum semantic accuracy, Syntra OS uses **OpenAI text-embedding-3-small** (1536 dimensions) or compatible models.
 
-### 1. Cost Efficiency (50% reduction)
-* **OpenAI text-embedding-3-small**: Costs **$0.02** per 1M tokens.
-* **BAAI bge-base-en-v1.5**: Costs **$0.01** per 1M tokens (50% cheaper).
+### 1. Dimension Format & Semantic Precision
+* **1536 dimensions**: The 1536-dimensional vector space provides higher fidelity semantic capture, enabling more precise similarity matching for complex financial documents, payroll records, and invoices.
+* **Database & Index Footprint**: 1536-dimensional vectors are stored efficiently in PostgreSQL using pgvector's optimized data types and index strategies.
 
-### 2. Dimension Format & Memory Optimization
-The "format" of an embedding vector refers to its dimensionality.
-* **768 vs. 1536**: BAAI uses 768 dimensions compared to OpenAI's 1536. 
-* **Database & Index Footprint**: 768-dimensional vectors take exactly **50% less storage and RAM** in PostgreSQL than 1536-dimensional ones. This allows the system to scale to millions of chunk records under constrained server hardware resources.
-
-### 3. Execution Speed
-Cosine similarity index lookups scale linearly with vector dimensions. By executing lookups on 768 floating point numbers instead of 1536, the similarity calculations (pgvector `<=>` operator) consume less CPU and return top-K matching contexts faster.
+### 2. Execution Speed
+* **HNSW (Hierarchical Navigable Small World) Indexing**: Enables high-efficiency similarity queries without sequential table scans. 
+* **Cosine Similarity**: Cosine similarity is calculated directly in the database using pgvector's `<=>` distance operator.
 
 ---
 
@@ -54,7 +50,7 @@ CREATE TABLE document_chunks (
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
-    embedding vector(768) NOT NULL, -- Modified from 1536 to support BAAI
+    embedding vector(1536) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

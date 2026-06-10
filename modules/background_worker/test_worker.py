@@ -32,18 +32,17 @@ def mock_failure_handler(payload: dict, db):
     fail_runs += 1
     raise RuntimeError("Simulated task exception")
 
-def setup_db():
+import pytest
+
+@pytest.fixture(autouse=True)
+def setup_teardown():
     Base.metadata.create_all(bind=engine)
-    # Patch SessionLocal inside worker_engine to use our testing engine
     import modules.background_worker.worker_engine as we
     original_session = we.SessionLocal
     we.SessionLocal = TestingSessionLocal
-    
-    def teardown():
-        Base.metadata.drop_all(bind=engine)
-        we.SessionLocal = original_session
-        
-    return teardown
+    yield
+    Base.metadata.drop_all(bind=engine)
+    we.SessionLocal = original_session
 
 def test_task_success_execution():
     db = TestingSessionLocal()
@@ -105,7 +104,10 @@ def test_task_retry_and_failure_flow():
     db.close()
 
 if __name__ == "__main__":
-    teardown = setup_db()
+    Base.metadata.create_all(bind=engine)
+    import modules.background_worker.worker_engine as we
+    original_session = we.SessionLocal
+    we.SessionLocal = TestingSessionLocal
     try:
         print("Running test_task_success_execution...")
         test_task_success_execution()
@@ -113,4 +115,5 @@ if __name__ == "__main__":
         test_task_retry_and_failure_flow()
         print("All worker tests passed successfully!")
     finally:
-        teardown()
+        Base.metadata.drop_all(bind=engine)
+        we.SessionLocal = original_session

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
-from backend.app.database import get_db
+from app.database import get_db
 from modules.ai_research_engine.models import ResearchTask, ResearchMemory
 from modules.ai_research_engine.research_planner import ResearchPlanner
 from modules.ai_research_engine.query_decomposer import QueryDecomposer
@@ -132,7 +132,7 @@ def trigger_research(payload: Dict[str, Any], background_tasks: BackgroundTasks,
     db.refresh(task)
 
     # Launch task in background thread
-    from backend.app.database import SessionLocal
+    from app.database import SessionLocal
     background_tasks.add_task(run_research_pipeline, task.id, task.goal, SessionLocal)
 
     return task.to_dict()

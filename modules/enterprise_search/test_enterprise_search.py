@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.app.database import Base
+from app.database import Base
 from modules.enterprise_search.models import SearchQueryLog, RecentSearch
 from modules.enterprise_search.query_parser import QueryParser
 from modules.enterprise_search.ranking_engine import SearchRankingEngine

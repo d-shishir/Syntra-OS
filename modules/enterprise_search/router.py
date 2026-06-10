@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.database import get_db
+from app.database import get_db
 from modules.enterprise_search.search_engine import EnterpriseSearchEngine
 from modules.enterprise_search.autocomplete import AutocompleteEngine
 from modules.enterprise_search.search_indexer import get_index_stats

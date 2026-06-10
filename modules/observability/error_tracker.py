@@ -43,6 +43,7 @@ class ErrorTracker:
                 db.add(err_record)
                 db.commit()
             except Exception as ex:
+                db.rollback()
                 logger.error(f"Error persisting error log: {str(ex)}")
 
 error_tracker = ErrorTracker()

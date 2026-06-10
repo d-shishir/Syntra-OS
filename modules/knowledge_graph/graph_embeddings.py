@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from backend.app.services.embeddings import get_embedding
+from app.services.embeddings import get_embedding
 from modules.knowledge_graph.models import GraphNode, GraphEdge
 
 logger = logging.getLogger(__name__)

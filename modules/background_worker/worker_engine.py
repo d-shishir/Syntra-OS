@@ -141,3 +141,35 @@ def stop_worker():
     _stop_event.set()
     _worker_thread.join(timeout=5.0)
     logger.info("Background worker thread shut down.")
+
+if __name__ == "__main__":
+    import sys
+    import os
+    
+    # Ensure workspace root is in sys.path
+    root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if root_path not in sys.path:
+        sys.path.insert(0, root_path)
+    # Ensure backend path is in sys.path
+    backend_path = os.path.join(root_path, "backend")
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+        
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+    logger.info("Starting Syntra OS Decoupled Background Worker...")
+    
+    # Import main to load and register all handlers (e.g. document_ingestion)
+    try:
+        import app.main
+    except ImportError as e:
+        logger.error(f"Failed to import app.main: {str(e)}")
+        
+    logger.info("Background worker entering polling loop. Press Ctrl+C to stop.")
+    try:
+        _worker_loop()
+    except KeyboardInterrupt:
+        logger.info("Received shutdown signal. Stopping worker...")
+        _stop_event.set()

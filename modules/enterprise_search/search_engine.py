@@ -2,7 +2,7 @@ import time
 import logging
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from backend.app.config import settings
+from app.config import settings
 
 from modules.enterprise_search.query_parser import QueryParser
 from modules.enterprise_search.hybrid_search import HybridSearchExecutor

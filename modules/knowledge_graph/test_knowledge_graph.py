@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.app.database import Base
+from app.database import Base
 from modules.knowledge_graph.models import GraphNode, GraphEdge
 from modules.knowledge_graph.entity_extractor import EntityExtractor
 from modules.knowledge_graph.relationship_builder import RelationshipBuilder

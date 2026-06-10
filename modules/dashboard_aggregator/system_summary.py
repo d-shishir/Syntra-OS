@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy.orm import Session
-from backend.app.config import settings
+from app.config import settings
 
 from modules.dashboard_aggregator.metrics_aggregator import get_dashboard_metrics, calculate_health_score
 

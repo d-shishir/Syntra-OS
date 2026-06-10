@@ -29,7 +29,7 @@ A production-ready enterprise platform for document ingestion, raw text extracti
 - **Frontend**: React 18, TypeScript, Tailwind CSS v4, Vite, Lucide Icons
 - **Backend**: FastAPI, SQLAlchemy (v2), pdfplumber (Text Extraction), Uvicorn
 - **Database**: PostgreSQL (pgvector, HNSW optimized similarity search, UUID keys)
-- **AI/RAG Integration**: Multi-chunk embeddings pipeline (768-dim BAAI bge-base-en-v1.5), cosine similarity matching, OpenAI/OpenRouter chat context completion.
+- **AI/RAG Integration**: Multi-chunk embeddings pipeline (1536-dim OpenAI text-embedding-3-small), cosine similarity matching, OpenAI/OpenRouter chat context completion.
 - **Fintech Automation**: Validator calculation auditing engine and statistical anomaly checking.
 
 ---
