@@ -573,38 +573,7 @@ function App() {
                   </button>
                 </form>
 
-                {/* Quick select simulator profiles */}
-                <div className="border-t border-darkBorder/40 pt-4 space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-darkMuted">
-                      Quick-Select Simulation Roles
-                    </span>
-                    <button
-                      onClick={() => setAuthView("invite")}
-                      className="text-xs text-neonTeal font-mono font-bold hover:underline flex items-center gap-1"
-                    >
-                      <UserPlus className="w-3 h-3" /> Invite User
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    {[
-                      { email: "admin@syntra.io", label: "Admin Director", desc: "System Control" },
-                      { email: "finance@syntra.io", label: "Finance Specialist", desc: "Accounts & Bills" },
-                      { email: "sales@syntra.io", label: "Sales Representative", desc: "CRM & Pipelines" },
-                      { email: "compliance@syntra.io", label: "Compliance Specialist", desc: "IAM & Audit Logs" }
-                    ].map(profile => (
-                      <button
-                        key={profile.email}
-                        type="button"
-                        onClick={() => handleLoginSubmit(profile.email, `${profile.email.split('@')[0]}password`)}
-                        className="p-2.5 border border-darkBorder bg-darkPanel/20 hover:border-neonIndigo/40 hover:bg-darkPanel/40 text-darkMuted hover:text-gray-200 rounded-xl text-left transition-all cursor-pointer"
-                      >
-                        <span className="font-semibold block text-gray-200">{profile.label}</span>
-                        <span className="opacity-60 block text-[9px] truncate">{profile.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
               </div>
             )}
 
@@ -1533,14 +1502,14 @@ function App() {
       onLogout={logout}
     >
       {/* Dynamic Module content area */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 divide-y lg:divide-y-0 lg:divide-x divide-darkBorder/40 flex-1">
         
         {/* Left Drawer component visible under Document Assistant Tab */}
         {activeTab === "assistant" && sidebarOpen && (
-          <div className="lg:col-span-1 space-y-6 animate-fadeIn">
-            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4">
+          <div className="lg:col-span-1 space-y-6 pb-6 lg:pb-0 lg:pr-6 animate-fadeIn">
+            <div className="p-5 bg-darkPanel/20 border border-darkBorder rounded-lg space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-gray-200">Upload PDF Document</h2>
+                <h2 className="text-sm font-semibold text-gray-200">Upload PDF Document</h2>
                 <p className="text-xs text-darkMuted mt-0.5">Ingest files into pipeline database</p>
               </div>
               <FileUpload 
@@ -1550,8 +1519,8 @@ function App() {
               />
             </div>
 
-            <div className="p-6 bg-darkPanel/30 border border-darkBorder rounded-xl space-y-4 max-h-[380px] overflow-y-auto">
-              <h3 className="text-xs font-semibold text-darkMuted uppercase tracking-wider">
+            <div className="p-5 bg-darkPanel/20 border border-darkBorder rounded-lg space-y-4 max-h-[380px] overflow-y-auto font-mono">
+              <h3 className="text-xs font-semibold text-darkMuted uppercase tracking-wide">
                 Document Library ({documents.length})
               </h3>
               <DocumentList
@@ -1570,7 +1539,7 @@ function App() {
         )}
 
         {/* Dynamic Center Dashboard Views */}
-        <div className={`${activeTab === "assistant" && sidebarOpen ? "lg:col-span-3" : "lg:col-span-4"} space-y-6 flex flex-col`}>
+        <div className={`${activeTab === "assistant" && sidebarOpen ? "lg:col-span-3 pt-6 lg:pt-0 lg:pl-6" : "lg:col-span-4"} space-y-6 flex flex-col`}>
           {renderTabContent()}
         </div>
       </div>

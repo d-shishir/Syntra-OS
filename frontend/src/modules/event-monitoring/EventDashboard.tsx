@@ -325,8 +325,7 @@ export const EventDashboard: React.FC = () => {
           {[
             { id: "stream", label: "Event Stream", num: events.length },
             { id: "jobs", label: "Job Queue Log", num: jobs.length },
-            { id: "dlq", label: "Dead Letter Queue", num: dlqJobs.length },
-            { id: "simulator", label: "Publish Simulator", num: null }
+            { id: "dlq", label: "Dead Letter Queue", num: dlqJobs.length }
           ].map(tab => (
             <button
               key={tab.id}
@@ -453,7 +452,7 @@ export const EventDashboard: React.FC = () => {
               <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 text-xs text-red-400 flex items-start gap-2.5">
                 <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-semibold">Dead Letter Queue Storage (Simulation)</h4>
+                  <h4 className="font-semibold">Dead Letter Queue Storage</h4>
                   <p className="mt-0.5 leading-relaxed opacity-90">
                     Exhausted background operations are captured here permanently. You can manually inspect the exception state parameters and re-enqueue them back into the priority queues.
                   </p>
@@ -501,106 +500,7 @@ export const EventDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Tab 4: Event Simulation Publisher */}
-          {activeTab === "simulator" && (
-            <div className="max-w-2xl mx-auto border border-darkBorder/60 bg-darkPanel/15 rounded-xl p-6 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
-                <Send className="w-4 h-4 text-neonIndigo" />
-                Operational Event Simulator
-              </h3>
-              <p className="text-xs text-darkMuted">
-                Select an event category type, choose a priority, and publish it into Syntra OS's runtime to trigger subscriber pipeline workflows and watch worker logs.
-              </p>
 
-              <form onSubmit={handleSimulatePublish} className="space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-darkMuted font-semibold">Event Type (Category)</label>
-                    <select
-                      value={simEventType}
-                      onChange={(e) => setSimEventType(e.target.value)}
-                      className="w-full bg-darkBg border border-darkBorder rounded px-3 py-2 text-gray-200"
-                    >
-                      <option value="invoice_uploaded">invoice_uploaded</option>
-                      <option value="payroll_processed">payroll_processed</option>
-                      <option value="lead_created">lead_created</option>
-                      <option value="workflow_failed">workflow_failed</option>
-                      <option value="approval_required">approval_required</option>
-                      <option value="anomaly_detected">anomaly_detected</option>
-                      <option value="research_completed">research_completed</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-darkMuted font-semibold">Source Module</label>
-                    <select
-                      value={simSource}
-                      onChange={(e) => setSimSource(e.target.value)}
-                      className="w-full bg-darkBg border border-darkBorder rounded px-3 py-2 text-gray-200"
-                    >
-                      <option value="finance">finance</option>
-                      <option value="crm">crm</option>
-                      <option value="multi_agent_system">multi_agent_system</option>
-                      <option value="observability">observability</option>
-                      <option value="document_ingestion">document_ingestion</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-darkMuted font-semibold">Priority level</label>
-                    <div className="flex gap-2.5 mt-1">
-                      {(["low", "medium", "high", "critical"] as const).map(prio => (
-                        <button
-                          key={prio}
-                          type="button"
-                          onClick={() => setSimPriority(prio)}
-                          className={`px-3 py-1.5 font-mono uppercase font-bold text-[9px] border rounded transition-all cursor-pointer ${
-                            simPriority === prio
-                              ? "bg-neonIndigo/20 border-neonIndigo text-neonIndigo"
-                              : "bg-darkBg border-darkBorder text-darkMuted hover:text-gray-300"
-                          }`}
-                        >
-                          {prio}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-darkMuted font-semibold">Event Payload (JSON Format)</label>
-                  <textarea
-                    rows={4}
-                    value={simPayload}
-                    onChange={(e) => setSimPayload(e.target.value)}
-                    className="w-full bg-darkBg border border-darkBorder rounded p-3 font-mono text-gray-300 focus:outline-none focus:border-neonIndigo"
-                  />
-                </div>
-
-                {publishMessage && (
-                  <div className={`p-3 rounded border text-xs flex gap-2 items-center ${
-                    publishMessage.type === "success" 
-                      ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
-                      : "border-red-500/20 bg-red-500/5 text-red-400"
-                  }`}>
-                    {publishMessage.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                    <span>{publishMessage.text}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={publishing}
-                  className="w-full py-2.5 bg-neonIndigo hover:bg-neonIndigo/85 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer text-xs"
-                >
-                  {publishing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                  <span>Publish Simulated Event</span>
-                </button>
-              </form>
-            </div>
-          )}
         </div>
       </div>
 

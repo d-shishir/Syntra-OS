@@ -64,11 +64,14 @@ export const OrgAdminCenter: React.FC = () => {
   const fetchOrgs = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get("/organizations");
-      if (res && res.length > 0) {
-        setOrganizations(res);
-        setActiveOrg(res[0]);
-        fetchOrgDetails(res[0].id);
+      const response = await apiClient.get("/organizations");
+      if (response.ok) {
+        const res = await response.json();
+        if (res && res.length > 0) {
+          setOrganizations(res);
+          setActiveOrg(res[0]);
+          fetchOrgDetails(res[0].id);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -83,8 +86,8 @@ export const OrgAdminCenter: React.FC = () => {
         apiClient.get(`/organizations/${orgId}/workspaces`),
         apiClient.get(`/organizations/${orgId}/members`)
       ]);
-      setWorkspaces(wsRes || []);
-      setMembers(memRes || []);
+      if (wsRes.ok) setWorkspaces(await wsRes.json());
+      if (memRes.ok) setMembers(await memRes.json());
     } catch (err) {
       console.error("Error loading org details", err);
     }
@@ -94,18 +97,23 @@ export const OrgAdminCenter: React.FC = () => {
     e.preventDefault();
     if (!newOrgName) return;
     try {
-      const newOrg = await apiClient.post("/organizations", {
+      const response = await apiClient.post("/organizations", {
         name: newOrgName,
         industry: newOrgIndustry || "Technology",
         country: "United States",
         subscription_plan: "Starter"
       });
-      setOrganizations([...organizations, newOrg]);
-      setActiveOrg(newOrg);
-      fetchOrgDetails(newOrg.id);
-      setNewOrgName("");
-      setNewOrgIndustry("");
-      showToast(`Organization "${newOrg.name}" created successfully!`);
+      if (response.ok) {
+        const newOrg = await response.json();
+        setOrganizations([...organizations, newOrg]);
+        setActiveOrg(newOrg);
+        fetchOrgDetails(newOrg.id);
+        setNewOrgName("");
+        setNewOrgIndustry("");
+        showToast(`Organization "${newOrg.name}" created successfully!`);
+      } else {
+        showToast("Failed to create organization.", "error");
+      }
     } catch (err) {
       showToast("Failed to create organization.", "error");
     }
@@ -115,14 +123,19 @@ export const OrgAdminCenter: React.FC = () => {
     e.preventDefault();
     if (!activeOrg || !newWsName) return;
     try {
-      const newWs = await apiClient.post(`/organizations/${activeOrg.id}/workspaces`, {
+      const response = await apiClient.post(`/organizations/${activeOrg.id}/workspaces`, {
         name: newWsName,
         description: newWsDesc
       });
-      setWorkspaces([...workspaces, newWs]);
-      setNewWsName("");
-      setNewWsDesc("");
-      showToast(`Workspace "${newWs.name}" initialized!`);
+      if (response.ok) {
+        const newWs = await response.json();
+        setWorkspaces([...workspaces, newWs]);
+        setNewWsName("");
+        setNewWsDesc("");
+        showToast(`Workspace "${newWs.name}" initialized!`);
+      } else {
+        showToast("Failed to create workspace.", "error");
+      }
     } catch (err) {
       showToast("Failed to create workspace.", "error");
     }

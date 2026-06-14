@@ -27,14 +27,14 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
 }) => {
   return (
     <div
-      className="p-5 bg-darkPanel/20 border border-darkBorder/80 hover:border-neonTeal/50 hover:bg-darkPanel/30 rounded-xl flex flex-col justify-between gap-4 transition-all duration-300 hover:-translate-y-0.5 shadow-sm hover:shadow-md hover:shadow-neonTeal/5 group relative"
+      className="p-5 bg-darkPanel/10 border border-darkBorder hover:border-neonTeal/40 hover:bg-white/[0.02] rounded-lg flex flex-col justify-between gap-4 transition-all duration-300 group relative"
     >
       {/* Corner Telemetry crosshairs */}
       <span className="absolute top-2 right-2.5 font-mono text-[9px] text-neonTeal/20 select-none">+</span>
       <span className="absolute bottom-2 left-2.5 font-mono text-[9px] text-neonTeal/20 select-none">+</span>
 
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-neonTeal/5 flex items-center justify-center text-neonTeal shrink-0 group-hover:scale-105 transition-transform border border-neonTeal/15">
+        <div className="w-10 h-10 rounded-lg bg-neonTeal/5 flex items-center justify-center text-neonTeal shrink-0 group-hover:scale-105 transition-transform border border-neonTeal/15">
           <FileText className="w-5 h-5" />
         </div>
         <div className="space-y-1 min-w-0">
@@ -67,8 +67,8 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
         />
       </div>
 
-      <div className="flex items-center justify-between border-t border-darkBorder/40 pt-3 mt-1 gap-2">
-        <span className="text-[9px] uppercase font-mono text-darkMuted">
+      <div className="flex items-center justify-between border-t border-dashed border-darkBorder/60 pt-3 mt-1 gap-2">
+        <span className="text-[9px] uppercase font-mono text-darkMuted tracking-wide">
           {isTrash ? "Trashed" : "Ingested"}
         </span>
         <div className="flex gap-2">

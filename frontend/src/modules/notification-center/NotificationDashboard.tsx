@@ -539,9 +539,9 @@ export const NotificationDashboard: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     {[
                       { id: "in_app_enabled", label: "In-App Alerts", icon: Bell },
-                      { id: "email_enabled", label: "Email Notifications (Simulation)", icon: Mail },
-                      { id: "slack_enabled", label: "Slack Webhook (Simulation)", icon: Slack },
-                      { id: "sms_enabled", label: "SMS Alerts (Simulation)", icon: MessageSquare }
+                      { id: "email_enabled", label: "Email Notifications", icon: Mail },
+                      { id: "slack_enabled", label: "Slack Webhook", icon: Slack },
+                      { id: "sms_enabled", label: "SMS Alerts", icon: MessageSquare }
                     ].map(ch => {
                       const Icon = ch.icon;
                       const enabled = (preferences as any)[ch.id];

@@ -146,7 +146,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
       </div>
 
       {displayedDocs.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-darkBorder rounded-xl bg-darkPanel/10">
+        <div className="text-center py-12 border border-dashed border-darkBorder rounded-lg bg-darkPanel/5">
           <FileText className="w-8 h-8 text-darkMuted mx-auto mb-3" />
           <p className="text-gray-300 font-medium">
             {activeTab === "active" ? "No active documents" : "Trash bin is empty"}
@@ -164,7 +164,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             <div 
               key={doc.id}
               onClick={() => onSelectDocument(doc.id)}
-              className="p-3 bg-darkBg/50 border border-darkBorder hover:border-neonTeal/40 rounded-xl flex items-center justify-between gap-3 group cursor-pointer transition-colors"
+              className="p-3 bg-darkBg/30 border border-darkBorder hover:border-neonTeal/40 hover:bg-white/[0.015] rounded-lg flex items-center justify-between gap-3 group cursor-pointer transition-all duration-300"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-7 h-7 rounded-lg bg-neonTeal/5 flex items-center justify-center text-neonTeal shrink-0 group-hover:scale-105 transition-transform">
@@ -230,7 +230,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       ) : (
         /* Dense Table List View */
-        <div className="overflow-hidden border border-darkBorder rounded-xl bg-darkPanel/20 backdrop-blur-md">
+        <div className="overflow-hidden border border-darkBorder rounded-lg bg-darkPanel/10 backdrop-blur-md">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -242,7 +242,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                   <th className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-darkBorder/50 text-sm">
+              <tbody className="divide-y divide-dashed divide-darkBorder/60 text-sm">
                 {displayedDocs.map((doc) => (
                   <tr 
                     key={doc.id}

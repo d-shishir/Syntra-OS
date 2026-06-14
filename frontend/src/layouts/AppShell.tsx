@@ -224,7 +224,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </header>
 
         {/* Content Viewport */}
-        <main className="p-6 md:p-8 flex-1 flex flex-col">
+        <main className="page-rails flex-1 flex flex-col p-6 md:p-8 dot-pattern">
           {children}
         </main>
       </div>

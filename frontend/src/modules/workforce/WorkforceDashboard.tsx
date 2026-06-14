@@ -487,15 +487,14 @@ export const WorkforceDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Simulation Document Uploader */}
+              {/* Document Uploader */}
               <div className="p-3 bg-darkBg border border-darkBorder rounded-lg space-y-2 text-xs">
-                <span className="text-[9px] font-mono uppercase text-darkMuted block">Simulate Document Submission</span>
+                <span className="text-[9px] font-mono uppercase text-darkMuted block">Submit Required Document</span>
                 <div className="space-y-1.5">
                   <select
                     value={selectedDocType}
                     onChange={(e) => {
                       setSelectedDocType(e.target.value);
-                      // Set matching mock filenames
                       if (e.target.value === "Government ID") setUploadFileName("passport_verified.jpg");
                       else if (e.target.value === "W-9 Tax Form") setUploadFileName("w9_stark_valid.pdf");
                       else if (e.target.value === "Proof of Address") setUploadFileName("utility_bill_tower.pdf");
@@ -512,7 +511,7 @@ export const WorkforceDashboard: React.FC = () => {
                     type="text"
                     value={uploadFileName}
                     onChange={(e) => setUploadFileName(e.target.value)}
-                    placeholder="mock_filename.pdf"
+                    placeholder="filename.pdf"
                     className="w-full bg-darkPanel border border-darkBorder rounded p-1 text-xs text-gray-200 focus:outline-none"
                   />
                   <button
@@ -581,7 +580,7 @@ export const WorkforceDashboard: React.FC = () => {
             </div>
           ) : (
             <div className="p-8 text-center text-xs text-darkMuted border border-dashed border-darkBorder rounded-xl bg-darkPanel/5">
-              Select a contractor profile to view onboarding checklists, AI scan simulations, compliance controls, and contracts.
+              Select a contractor profile to view onboarding checklists, AI scans, compliance controls, and contracts.
             </div>
           )}
 

@@ -398,27 +398,7 @@ export const UnifiedDashboard: React.FC = () => {
           </button>
         </form>
 
-        <div className="border-t border-darkBorder/60 pt-4 space-y-2">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-darkMuted block">Quick-Select Simulation Profiles</span>
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            {[
-              { email: "admin@syntra.io", label: "Admin Director" },
-              { email: "finance@syntra.io", label: "Finance Specialist" },
-              { email: "sales@syntra.io", label: "Sales Rep" },
-              { email: "compliance@syntra.io", label: "Compliance Officer" }
-            ].map(profile => (
-              <button
-                key={profile.email}
-                type="button"
-                onClick={() => handleLoginSubmit(profile.email, `${profile.email.split('@')[0]}password`)}
-                className="p-2 border border-darkBorder bg-darkPanel/20 hover:border-darkBorder/100 text-darkMuted hover:text-gray-300 rounded text-left transition-all cursor-pointer"
-              >
-                <span className="font-semibold block">{profile.label}</span>
-                <span className="opacity-60 block text-[9px] truncate">{profile.email}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+
       </div>
     );
   }

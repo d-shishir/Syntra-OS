@@ -44,13 +44,13 @@ const SIMULATED_LOGINS = [
 ];
 
 export const AuthDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"users" | "sessions" | "audit" | "simulation">("simulation");
+  const [activeTab, setActiveTab] = useState<"users" | "sessions" | "audit">("users");
   const [users, setUsers] = useState<User[]>([]);
   const [sessions, setSessions] = useState<UserSession[]>([]);
   const [audits, setAudits] = useState<SecurityAudit[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Active Login Simulator State
+  // Active Login Session State resolved from localStorage
   const [currentSession, setCurrentSession] = useState<any | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -60,6 +60,39 @@ export const AuthDashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newRole, setNewRole] = useState("");
   const [newStatus, setNewStatus] = useState<"active" | "suspended">("active");
+
+  const decodeJwt = (activeToken: string) => {
+    try {
+      const base64Url = activeToken.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem("syntra_token");
+    if (token) {
+      const payload = decodeJwt(token);
+      if (payload) {
+        setCurrentSession({
+          access_token: token,
+          user: {
+            id: payload.sub,
+            name: payload.role === "admin" 
+              ? "Admin Director" 
+              : payload.role.replace("_", " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            role: payload.role,
+            department: payload.department
+          }
+        });
+      }
+    }
+  }, []);
 
   const fetchSecurityData = useCallback(async () => {
     try {
@@ -217,7 +250,6 @@ export const AuthDashboard: React.FC = () => {
       <div className="border border-darkBorder rounded-xl bg-darkPanel/10 overflow-hidden flex flex-col">
         <div className="flex border-b border-darkBorder/60 bg-darkPanel/30 px-4">
           {[
-            { id: "simulation", label: "IAM Simulator Console", icon: Shield },
             { id: "users", label: "User Directory Access", icon: Users },
             { id: "audit", label: "Security Audit Logs", icon: ShieldAlert }
           ].map(tab => {
@@ -240,97 +272,7 @@ export const AuthDashboard: React.FC = () => {
         </div>
 
         <div className="p-6">
-          {/* Tab 1: Simulation Console */}
-          {activeTab === "simulation" && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
-                  <Key className="w-4 h-4 text-neonTeal" />
-                  Simulate Enterprise Credentials Login
-                </h3>
-                <p className="text-xs text-darkMuted leading-relaxed">
-                  Enterprise security systems are role-based. Select any pre-configured role profile to simulate active session logins and watch how the rest of the Syntra OS platform protects dashboards and logs.
-                </p>
 
-                <div className="space-y-2.5">
-                  {SIMULATED_LOGINS.map(loginInfo => (
-                    <button
-                      key={loginInfo.email}
-                      onClick={() => handleSimulateLogin(loginInfo.email, loginInfo.password)}
-                      className={`w-full p-4 rounded-xl border text-left text-xs transition-all flex justify-between items-center cursor-pointer ${
-                        currentSession?.user?.email === loginInfo.email
-                          ? "bg-neonTeal/10 border-neonTeal text-gray-200 font-semibold"
-                          : "bg-darkPanel/20 border-darkBorder hover:border-darkBorder/100 text-darkMuted hover:text-gray-300"
-                      }`}
-                    >
-                      <div>
-                        <span className="font-semibold block text-gray-200">{loginInfo.label}</span>
-                        <code className="text-[10px] font-mono text-darkMuted block mt-0.5">{loginInfo.email}</code>
-                      </div>
-                      {currentSession?.user?.email === loginInfo.email ? (
-                        <CheckCircle2 className="w-4 h-4 text-neonTeal" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 opacity-50" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border border-darkBorder/60 bg-darkPanel/15 rounded-xl p-6 space-y-4 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-neonTeal" />
-                    Session Token Diagnostics
-                  </h3>
-                  
-                  {currentSession ? (
-                    <div className="space-y-4 mt-4 text-xs">
-                      <div className="grid grid-cols-2 gap-2 text-xs bg-darkBg/30 p-4 border border-darkBorder/50 rounded-xl">
-                        <div>
-                          <span className="text-darkMuted text-[10px] uppercase font-mono">Role Profile</span>
-                          <span className="font-semibold text-gray-200 block capitalize mt-0.5">{currentSession.user.role}</span>
-                        </div>
-                        <div>
-                          <span className="text-darkMuted text-[10px] uppercase font-mono">Department Isolation</span>
-                          <span className="font-semibold text-gray-200 block capitalize mt-0.5">{currentSession.user.department}</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <span className="text-darkMuted text-[10px] uppercase font-mono">JWT Access Token</span>
-                        <pre className="p-3 bg-darkBg border border-darkBorder rounded-lg font-mono text-[9px] text-darkMuted truncate select-all">
-                          {currentSession.access_token}
-                        </pre>
-                      </div>
-
-                      <div className="space-y-1">
-                        <span className="text-darkMuted text-[10px] uppercase font-mono">Session Refresh Token</span>
-                        <code className="p-2 bg-darkBg border border-darkBorder rounded-lg font-mono text-[10px] text-gray-300 block select-all">
-                          {currentSession.refresh_token}
-                        </code>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-12 text-center text-xs text-darkMuted">
-                      No active token session. Click a profile on the left to authenticate.
-                    </div>
-                  )}
-                </div>
-
-                {loginFeedback && (
-                  <div className={`p-3 rounded border text-xs flex gap-2 items-center mt-4 ${
-                    loginFeedback.type === "success" 
-                      ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
-                      : "border-red-500/20 bg-red-500/5 text-red-400"
-                  }`}>
-                    {loginFeedback.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                    <span>{loginFeedback.text}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Tab 2: Users Management (restricted) */}
           {activeTab === "users" && (

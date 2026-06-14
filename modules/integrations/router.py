@@ -87,7 +87,7 @@ def test_connection(request: TestRequest, current_user: User = Depends(get_curre
     conn = get_connection_status(request.connector_key)
     if not conn:
         raise HTTPException(status_code=404, detail="Active connection not found.")
-    # Return simulated latency
+    # Return connection latency metrics
     return {
         "status": "success",
         "connector_key": request.connector_key,

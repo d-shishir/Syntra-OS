@@ -86,10 +86,10 @@ export const DeveloperPortal: React.FC = () => {
         apiClient.get(`/developer/logs?organization_id=${activeOrgId}`),
         apiClient.get(`/developer/webhooks/attempts?organization_id=${activeOrgId}`)
       ]);
-      setKeys(keysRes || []);
-      setWebhooks(whRes || []);
-      setGatewayLogs(logsRes || []);
-      setAttempts(attemptsRes || []);
+      if (keysRes.ok) setKeys(await keysRes.json());
+      if (whRes.ok) setWebhooks(await whRes.json());
+      if (logsRes.ok) setGatewayLogs(await logsRes.json());
+      if (attemptsRes.ok) setAttempts(await attemptsRes.json());
     } catch (err) {
       console.error(err);
     } finally {
@@ -101,16 +101,21 @@ export const DeveloperPortal: React.FC = () => {
     e.preventDefault();
     if (!keyName) return;
     try {
-      const newKey = await apiClient.post("/developer/keys", {
+      const response = await apiClient.post("/developer/keys", {
         name: keyName,
         organization_id: activeOrgId,
         workspace_id: activeWsId,
         scopes: keyScopes
       });
-      setKeys([...keys, newKey]);
-      setNewRawKey(newKey.raw_key);
-      setKeyName("");
-      setToast("API Key created! Please copy it immediately.");
+      if (response.ok) {
+        const newKey = await response.json();
+        setKeys([...keys, newKey]);
+        setNewRawKey(newKey.raw_key);
+        setKeyName("");
+        setToast("API Key created! Please copy it immediately.");
+      } else {
+        setToast("Failed to create key.");
+      }
     } catch (err) {
       setToast("Failed to create key.");
     }
@@ -130,17 +135,22 @@ export const DeveloperPortal: React.FC = () => {
     e.preventDefault();
     if (!whName || !whUrl) return;
     try {
-      const newSub = await apiClient.post("/developer/webhooks", {
+      const response = await apiClient.post("/developer/webhooks", {
         name: whName,
         organization_id: activeOrgId,
         workspace_id: activeWsId,
         target_url: whUrl,
         events: whEvents
       });
-      setWebhooks([...webhooks, newSub]);
-      setWhName("");
-      setWhUrl("");
-      setToast("Webhook subscription established.");
+      if (response.ok) {
+        const newSub = await response.json();
+        setWebhooks([...webhooks, newSub]);
+        setWhName("");
+        setWhUrl("");
+        setToast("Webhook subscription established.");
+      } else {
+        setToast("Failed to create webhook.");
+      }
     } catch (err) {
       setToast("Failed to create webhook.");
     }
@@ -157,12 +167,17 @@ export const DeveloperPortal: React.FC = () => {
         setPlayLoading(false);
         return;
       }
-      const res = await apiClient.post("/developer/playground", {
+      const response = await apiClient.post("/developer/playground", {
         endpoint: playEndpoint,
         payload: payloadParsed
       });
-      setPlayResponse(res.response);
-      setToast("Playground call processed.");
+      if (response.ok) {
+        const data = await response.json();
+        setPlayResponse(data.response);
+        setToast("Playground call processed.");
+      } else {
+        setPlayResponse({ error: "Failed to connect to playground endpoint sandbox." });
+      }
     } catch (err) {
       setPlayResponse({ error: "Failed to connect to playground endpoint sandbox." });
     } finally {

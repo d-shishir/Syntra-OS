@@ -58,17 +58,22 @@ export const ExecutiveDashboard: React.FC = () => {
   const fetchExecutiveData = async () => {
     setLoading(true);
     try {
-      const [metrics, ins, alts] = await Promise.all([
+      const [metricsRes, insRes, altsRes] = await Promise.all([
         apiClient.get("/executive/metrics"),
         apiClient.get("/executive/insights"),
         apiClient.get("/executive/alerts")
       ]);
-      if (metrics) {
+      if (metricsRes.ok) {
+        const metrics = await metricsRes.json();
         setScores(metrics.scores);
         setRiskRadar(metrics.risk_radar);
       }
-      setInsights(ins || []);
-      setAlerts(alts || []);
+      if (insRes.ok) {
+        setInsights(await insRes.json());
+      }
+      if (altsRes.ok) {
+        setAlerts(await altsRes.json());
+      }
     } catch (err) {
       console.error("Error loading executive dashboard metrics", err);
     } finally {
@@ -81,10 +86,13 @@ export const ExecutiveDashboard: React.FC = () => {
     if (!query) return;
     setAsking(true);
     try {
-      const res = await apiClient.post("/executive/ask", { question: query });
-      setDecisionResult(res);
-      setToast("AI Executive Analyst compiled decision trace.");
-      setTimeout(() => setToast(null), 3000);
+      const response = await apiClient.post("/executive/ask", { question: query });
+      if (response.ok) {
+        const res = await response.json();
+        setDecisionResult(res);
+        setToast("AI Executive Analyst compiled decision trace.");
+        setTimeout(() => setToast(null), 3000);
+      }
     } catch (err) {
       console.error(err);
     } finally {
